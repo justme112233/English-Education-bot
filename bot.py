@@ -78,10 +78,14 @@ def get_unused_indices(used, total):
     used_set = set(used)
     return list(all_indices - used_set)
 
-def format_word(word_obj):
-    return f"**{word_obj['word']}**    {word_obj['transcription']}    \"{word_obj['pronunciation']}\"    {word_obj['translation']}"
+# Форматирование слова в зависимости от порядка
+def format_word_by_order(word_obj, order):
+    if order == "en_ru":
+        return f"**{word_obj['word']}**    {word_obj['transcription']}    \"{word_obj['pronunciation']}\"    {word_obj['translation']}"
+    else:  # ru_en
+        return f"**{word_obj['translation']}**    {word_obj['word']}    {word_obj['transcription']}    \"{word_obj['pronunciation']}\""
 
-# ========== НАСТРОЙКИ КОЛИЧЕСТВА СЛОВ ==========
+# ========== НАСТРОЙКИ КОЛИЧЕСТВА СЛОВ И ПОРЯДКА ==========
 def get_user_words_per_day(user_id: str) -> int:
     up = get_user_progress(user_id)
     return up.get("words_per_day", 5)
@@ -89,6 +93,15 @@ def get_user_words_per_day(user_id: str) -> int:
 def set_user_words_per_day(user_id: str, count: int):
     up = get_user_progress(user_id)
     up["words_per_day"] = count
+    set_user_progress(user_id, up)
+
+def get_user_word_order(user_id: str) -> str:
+    up = get_user_progress(user_id)
+    return up.get("word_order", "en_ru")  # "en_ru" или "ru_en"
+
+def set_user_word_order(user_id: str, order: str):
+    up = get_user_progress(user_id)
+    up["word_order"] = order
     set_user_progress(user_id, up)
 
 # ========== КЛАВИАТУРЫ ==========
@@ -113,8 +126,8 @@ def get_category_buttons(user_id: str):
 
 def get_after_words_buttons():
     keyboard = [
-        [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words")],
-        [InlineKeyboardButton("🔊 Произношение", callback_data="pronounce")],
+        [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words"),
+         InlineKeyboardButton("🔄 Обратный порядок", callback_data="reverse_order")],
         [InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -149,6 +162,16 @@ def get_confirm_reset_buttons(cat_key):
         [InlineKeyboardButton("✅ Да, сбросить", callback_data=f"confirm_reset_{cat_key}")],
         [InlineKeyboardButton("❌ Отмена", callback_data="cancel_reset")]
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_order_settings_buttons(current_order):
+    """Кнопки для выбора порядка слов в настройках"""
+    keyboard = []
+    if current_order != "en_ru":
+        keyboard.append([InlineKeyboardButton("🇬🇧 Английский → Русский", callback_data="order_en_ru")])
+    if current_order != "ru_en":
+        keyboard.append([InlineKeyboardButton("🇷🇺 Русский → Английский", callback_data="order_ru_en")])
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ВИКТОРИНЫ ==========
@@ -211,6 +234,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👋 Привет! Я помогу выучить английские слова по темам.\n\n"
         f"Текущая тема: *{CATEGORIES[context.user_data['current_category']]['name']}*\n\n"
         f"Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
+        f"Порядок слов: {'Английский→Русский' if get_user_word_order(user_id) == 'en_ru' else 'Русский→Английский'}\n\n"
         f"Нажимай кнопки:",
         parse_mode="Markdown",
         reply_markup=get_main_keyboard()
@@ -228,13 +252,15 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "⚙️ Настройки":
+        current_order = get_user_word_order(user_id)
+        order_text = "🇬🇧 Английский → Русский" if current_order == "en_ru" else "🇷🇺 Русский → Английский"
         await update.message.reply_text(
-            "⚙️ *Настройки*\n\n"
-            f"• Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
-            "Чтобы изменить, просто напишите число от 1 до 10.\n"
-            "Например: `5` или `10`.",
+            f"⚙️ *Настройки*\n\n"
+            f"• Количество слов в день: *{get_user_words_per_day(user_id)}*\n"
+            f"• Порядок слов: *{order_text}*\n\n"
+            f"Изменить порядок можно ниже:",
             parse_mode="Markdown",
-            reply_markup=get_main_keyboard()
+            reply_markup=get_order_settings_buttons(current_order)
         )
         return
 
@@ -295,8 +321,10 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
         context.user_data["last_pronounce_words"] = chosen_words
+        context.user_data["current_batch_words"] = chosen_words  # для обратного порядка
 
-        msg = "*Сегодняшние слова:*\n\n" + "\n".join(f"{i+1}. {format_word(w)}" for i, w in enumerate(chosen_words))
+        order = get_user_word_order(user_id)
+        msg = "*Сегодняшние слова:*\n\n" + "\n".join(f"{i+1}. {format_word_by_order(w, order)}" for i, w in enumerate(chosen_words))
         await update.message.reply_text(
             msg,
             parse_mode="Markdown",
@@ -391,8 +419,10 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
         context.user_data["last_pronounce_words"] = chosen_words
+        context.user_data["current_batch_words"] = chosen_words
 
-        msg = "*Ещё слова:*\n\n" + "\n".join(f"{i+1}. {format_word(w)}" for i, w in enumerate(chosen_words))
+        order = get_user_word_order(user_id)
+        msg = "*Ещё слова:*\n\n" + "\n".join(f"{i+1}. {format_word_by_order(w, order)}" for i, w in enumerate(chosen_words))
         await query.message.reply_text(
             msg,
             parse_mode="Markdown",
@@ -400,11 +430,28 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         )
 
     elif data == "back_to_menu":
+        # Возвращаем основную клавиатуру, НЕ очищая today_words
         await query.message.reply_text("Возвращаюсь в главное меню.")
         await context.bot.send_message(
             chat_id=user_id,
             text="Клавиатура активна.",
             reply_markup=get_main_keyboard()
+        )
+
+    elif data == "reverse_order":
+        # Берём последнюю порцию слов из контекста
+        batch = context.user_data.get("current_batch_words")
+        if not batch:
+            await query.answer("Нет слов для переворота.", show_alert=True)
+            return
+        # Получаем текущий глобальный порядок, но для обратного используем противоположный
+        current_order = get_user_word_order(user_id)
+        reverse_order = "ru_en" if current_order == "en_ru" else "en_ru"
+        msg = "*Слова (обратный порядок):*\n\n" + "\n".join(f"{i+1}. {format_word_by_order(w, reverse_order)}" for i, w in enumerate(batch))
+        await query.message.reply_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=get_after_words_buttons()
         )
 
     elif data == "pronounce":
@@ -422,7 +469,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             audio_bytes = io.BytesIO()
             tts.write_to_fp(audio_bytes)
             audio_bytes.seek(0)
-            # Отправляем как аудиофайл (MP3)
+            # Отправляем как аудиофайл (не голосовое)
             await query.message.reply_audio(
                 audio=audio_bytes,
                 filename=f"{text_to_speak}.mp3",
@@ -434,6 +481,21 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         except Exception as e:
             logger.error(f"gTTS error: {e}")
             await query.answer("Не удалось сгенерировать произношение.", show_alert=True)
+
+    elif data.startswith("order_"):
+        # Изменение порядка слов в настройках
+        new_order = data.split("_", 1)[1]  # "en_ru" или "ru_en"
+        if new_order in ("en_ru", "ru_en"):
+            set_user_word_order(user_id, new_order)
+            order_text = "🇬🇧 Английский → Русский" if new_order == "en_ru" else "🇷🇺 Русский → Английский"
+            await query.edit_message_text(
+                f"✅ Порядок слов изменён на *{order_text}*.\n\n"
+                f"Теперь новые слова будут выводиться в этом формате.",
+                parse_mode="Markdown",
+                reply_markup=get_order_settings_buttons(new_order)
+            )
+        else:
+            await query.answer("Неверный порядок.")
 
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
@@ -659,7 +721,7 @@ async def main():
     app.add_handler(count_conv_handler)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|pronounce|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
+    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
     webhook_url = f"{URL}/telegram"
