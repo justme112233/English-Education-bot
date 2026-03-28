@@ -3,6 +3,7 @@ import asyncio
 import json
 import random
 import io
+import logging
 from starlette.applications import Starlette
 from starlette.responses import Response, PlainTextResponse
 from starlette.requests import Request
@@ -10,12 +11,18 @@ from starlette.routing import Route
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 
-# Попытка импортировать gTTS, если не получается – будем выводить ошибку
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Попытка импортировать gTTS
 try:
     from gtts import gTTS
     GTTS_AVAILABLE = True
-except ImportError:
+    logger.info("gTTS successfully imported")
+except ImportError as e:
     GTTS_AVAILABLE = False
+    logger.warning(f"gTTS not available: {e}")
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -72,7 +79,6 @@ def get_unused_indices(used, total):
     return list(all_indices - used_set)
 
 def format_word(word_obj):
-    # слово, транскрипция, русское произношение, перевод
     return f"**{word_obj['word']}**    {word_obj['transcription']}    \"{word_obj['pronunciation']}\"    {word_obj['translation']}"
 
 # ========== НАСТРОЙКИ КОЛИЧЕСТВА СЛОВ ==========
@@ -106,6 +112,7 @@ def get_category_buttons(user_id: str):
     return InlineKeyboardMarkup(buttons)
 
 def get_after_words_buttons():
+    # Три кнопки
     keyboard = [
         [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words")],
         [InlineKeyboardButton("🔊 Произношение", callback_data="pronounce")],
@@ -404,7 +411,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
 
     elif data == "pronounce":
         if not GTTS_AVAILABLE:
-            await query.answer("Функция произношения временно недоступна. Установите gTTS.", show_alert=True)
+            await query.answer("Функция произношения временно недоступна (gTTS не установлен).", show_alert=True)
             return
         last_words = context.user_data.get("last_pronounce_words", [])
         if not last_words:
@@ -417,9 +424,11 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             audio_bytes = io.BytesIO()
             tts.write_to_fp(audio_bytes)
             audio_bytes.seek(0)
-            await query.message.reply_voice(voice=audio_bytes, caption=f"🔊 {text_to_speak}")
+            # Отправляем как голосовое сообщение с указанием имени файла
+            await query.message.reply_voice(voice=audio_bytes, filename="audio.mp3", caption=f"🔊 {text_to_speak}")
+            logger.info(f"Sent pronunciation for {text_to_speak}")
         except Exception as e:
-            print(f"Ошибка генерации звука: {e}")
+            logger.error(f"gTTS error: {e}")
             await query.answer("Не удалось сгенерировать произношение. Попробуйте позже.", show_alert=True)
 
     elif data.startswith("confirm_reset_"):
