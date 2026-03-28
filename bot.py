@@ -24,7 +24,6 @@ CATEGORIES = data["categories"]          # dict: key -> {"name": str, "words": l
 CATEGORY_KEYS = list(CATEGORIES.keys())
 DEFAULT_CATEGORY = "travel"
 
-# Состояния для ConversationHandler (оставлен для /set_count, но можно не использовать)
 COUNT_INPUT = 1
 
 # ========== ФУНКЦИИ ПРОГРЕССА ==========
@@ -98,7 +97,6 @@ def get_category_buttons(user_id: str):
     return InlineKeyboardMarkup(buttons)
 
 def get_after_words_buttons():
-    """Инлайн-кнопки после выдачи слов (для каждого сообщения)"""
     keyboard = [
         [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words")],
         [InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")]
@@ -106,24 +104,22 @@ def get_after_words_buttons():
     return InlineKeyboardMarkup(keyboard)
 
 def get_quiz_category_buttons(user_id: str):
-    """Кнопки выбора категории для викторины"""
     buttons = []
-    # Кнопка "Все категории"
     total_studied = 0
-    for info in CATEGORIES.values():
-        total_studied += len(get_user_progress(user_id).get(key, {"used": []})["used"])
-    buttons.append([InlineKeyboardButton("📚 Все категории", callback_data="quiz_all")])
-    # Кнопки для каждой категории
+    for key, info in CATEGORIES.items():
+        studied = len(get_user_progress(user_id).get(key, {"used": []})["used"])
+        total_studied += studied
+    if total_studied > 0:
+        buttons.append([InlineKeyboardButton("📚 Все категории", callback_data="quiz_all")])
     for key, info in CATEGORIES.items():
         studied = len(get_user_progress(user_id).get(key, {"used": []})["used"])
         if studied > 0:
             buttons.append([InlineKeyboardButton(f"{info['name']} ({studied})", callback_data=f"quiz_cat_{key}")])
-    if len(buttons) == 1:
+    if not buttons:
         buttons.append([InlineKeyboardButton("😢 Нет изученных слов", callback_data="noop")])
     return InlineKeyboardMarkup(buttons)
 
 def get_quiz_buttons(correct_translation, wrong_translations, word_id):
-    """Генерирует кнопки для викторины: перемешанные варианты"""
     options = wrong_translations + [correct_translation]
     random.shuffle(options)
     keyboard = []
@@ -133,7 +129,6 @@ def get_quiz_buttons(correct_translation, wrong_translations, word_id):
     return InlineKeyboardMarkup(keyboard)
 
 def get_confirm_reset_buttons(cat_key):
-    """Кнопки подтверждения сброса прогресса"""
     keyboard = [
         [InlineKeyboardButton("✅ Да, сбросить", callback_data=f"confirm_reset_{cat_key}")],
         [InlineKeyboardButton("❌ Отмена", callback_data="cancel_reset")]
@@ -146,7 +141,6 @@ def get_studied_indices(user_id: str, cat_key: str):
     return cat_prog.get("used", [])
 
 def get_all_studied_words(user_id: str):
-    """Возвращает список всех изученных слов (объекты) из всех категорий"""
     all_words = []
     for key, info in CATEGORIES.items():
         studied = get_studied_indices(user_id, key)
@@ -155,7 +149,6 @@ def get_all_studied_words(user_id: str):
     return all_words
 
 def get_random_studied_word(user_id: str, cat_key: str = None):
-    """Возвращает объект изученного слова из указанной категории (или из всех)"""
     if cat_key is None or cat_key == "all":
         all_words = get_all_studied_words(user_id)
         if not all_words:
@@ -169,13 +162,10 @@ def get_random_studied_word(user_id: str, cat_key: str = None):
         return CATEGORIES[cat_key]["words"][idx]
 
 def get_random_translations_for_quiz(cat_key: str, correct_word_obj, count=3):
-    """Возвращает список переводов из категории (или из всех) для викторины"""
     if cat_key == "all":
-        # Для "всех категорий" собираем переводы из всех категорий
         all_translations = []
         for key, info in CATEGORIES.items():
             all_translations.extend([w["translation"] for w in info["words"]])
-        # Убираем правильный
         correct_trans = correct_word_obj["translation"]
         possible = [t for t in all_translations if t != correct_trans]
         if len(possible) < count:
@@ -195,14 +185,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if "current_category" not in context.user_data:
         context.user_data["current_category"] = DEFAULT_CATEGORY
-    # Сохраняем текущую категорию в прогресс
     up = get_user_progress(user_id)
     if "current_category" not in up:
         up["current_category"] = DEFAULT_CATEGORY
         set_user_progress(user_id, up)
-    # Инициализируем список выданных сегодня слов (будет храниться в user_data)
     if "today_words" not in context.user_data:
-        context.user_data["today_words"] = []  # список индексов, выданных сегодня
+        context.user_data["today_words"] = []
     await update.message.reply_text(
         f"👋 Привет! Я помогу выучить английские слова по темам.\n\n"
         f"Текущая тема: *{CATEGORIES[context.user_data['current_category']]['name']}*\n\n"
@@ -234,7 +222,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Проверка на ввод числа для изменения количества слов
     if text.isdigit():
         num = int(text)
         if 1 <= num <= 10:
@@ -250,14 +237,12 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # Получаем текущую категорию
     cat_key = context.user_data.get("current_category", DEFAULT_CATEGORY)
     cat = CATEGORIES[cat_key]
     words = cat["words"]
     total = len(words)
 
     if text == "📚 Слова на сегодня":
-        # Если уже есть выданные сегодня слова, используем их, иначе создаём пустой список
         today_indices = context.user_data.get("today_words", [])
         cat_prog = get_category_progress(user_id, cat_key)
         used = cat_prog["used"]
@@ -265,7 +250,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         available = [i for i in unused if i not in today_indices]
         if not available:
             if not unused:
-                # Все слова изучены в категории, сбрасываем
                 reset_category_progress(user_id, cat_key)
                 await update.message.reply_text(
                     f"🎉 Поздравляю! Ты изучил все {total} слов в теме *{cat['name']}*!\n"
@@ -278,7 +262,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 unused = get_unused_indices(used, total)
                 available = [i for i in unused if i not in today_indices]
             else:
-                # Есть неизученные, но все они уже были сегодня – дадим возможность получить ещё, но сбрасываем список today_indices
                 today_indices = []
                 context.user_data["today_words"] = []
                 available = [i for i in unused if i not in today_indices]
@@ -288,18 +271,15 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chosen_indices = random.sample(available, count)
         chosen_words = [words[i] for i in chosen_indices]
 
-        # Обновляем прогресс
         new_used = used + chosen_indices
         cat_prog["used"] = new_used
         cat_prog["last"] = chosen_words
         set_category_progress(user_id, cat_key, cat_prog)
 
-        # Добавляем в today_indices
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
 
         msg = "*Сегодняшние слова:*\n\n" + "\n".join(f"{i+1}. {format_word(w)}" for i, w in enumerate(chosen_words))
-        # Отправляем новое сообщение с кнопками
         await update.message.reply_text(
             msg,
             parse_mode="Markdown",
@@ -307,7 +287,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif text == "🎮 Викторина":
-        # Предлагаем выбрать категорию
         await update.message.reply_text(
             "Выберите категорию для викторины:",
             reply_markup=get_quiz_category_buttons(user_id)
@@ -339,7 +318,6 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif text == "🗑 Сбросить прогресс":
-        # Запрашиваем подтверждение
         await update.message.reply_text(
             f"⚠️ Вы уверены, что хотите сбросить прогресс в теме *{cat['name']}*?",
             parse_mode="Markdown",
@@ -356,9 +334,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     cat = CATEGORIES[cat_key]
     words = cat["words"]
 
-    # Обработка кнопок после выдачи слов
     if data == "more_words":
-        # Пользователь хочет ещё слова
         today_indices = context.user_data.get("today_words", [])
         cat_prog = get_category_progress(user_id, cat_key)
         used = cat_prog["used"]
@@ -367,7 +343,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         available = [i for i in unused if i not in today_indices]
         if not available:
             if not unused:
-                # Все изучены, сбрасываем
                 reset_category_progress(user_id, cat_key)
                 await query.message.reply_text(
                     f"🎉 Поздравляю! Ты изучил все {total} слов в теме *{cat['name']}*!\n"
@@ -400,7 +375,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         context.user_data["today_words"] = today_indices
 
         msg = "*Ещё слова:*\n\n" + "\n".join(f"{i+1}. {format_word(w)}" for i, w in enumerate(chosen_words))
-        # Отправляем новое сообщение
         await query.message.reply_text(
             msg,
             parse_mode="Markdown",
@@ -408,8 +382,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         )
 
     elif data == "back_to_menu":
-        # Возвращаем в основное меню
-        context.user_data["today_words"] = []  # очищаем список выданных сегодня
+        # Возвращаем основную клавиатуру, НЕ очищая today_words
         await query.message.reply_text("Возвращаюсь в главное меню.")
         await context.bot.send_message(
             chat_id=user_id,
@@ -417,10 +390,12 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_keyboard()
         )
 
-    # Обработка подтверждения сброса прогресса
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
         reset_category_progress(user_id, cat_to_reset)
+        # Если сбрасывается текущая категория, то очищаем today_words
+        if cat_to_reset == context.user_data.get("current_category"):
+            context.user_data["today_words"] = []
         await query.edit_message_text(
             f"✅ Прогресс в теме *{CATEGORIES[cat_to_reset]['name']}* сброшен.",
             parse_mode="Markdown"
@@ -439,7 +414,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_keyboard()
         )
 
-    # Обработка выхода из викторины
     elif data == "exit_quiz":
         await query.edit_message_text("Викторина завершена. Возвращаюсь в меню.")
         await context.bot.send_message(
@@ -448,9 +422,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_keyboard()
         )
 
-    # Обработка выбора категории для викторины
     elif data == "quiz_all":
-        # Все категории
         context.user_data["quiz_category"] = "all"
         studied_words = get_all_studied_words(user_id)
         if not studied_words:
@@ -459,24 +431,23 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
             )
             return
-        # Выбираем случайное изученное слово
         word_obj = random.choice(studied_words)
-        # Находим, в какой категории это слово (чтобы взять переводы)
-        # Для простоты будем использовать его собственную категорию для подбора вариантов
+        # Находим категорию для подбора вариантов
         cat_for_options = None
         for key, info in CATEGORIES.items():
             if word_obj in info["words"]:
                 cat_for_options = key
                 break
+        context.user_data["last_quiz_word"] = word_obj
+        context.user_data["last_quiz_cat"] = cat_for_options if cat_for_options else "all"
         wrong = get_random_translations_for_quiz(cat_for_options if cat_for_options else "all", word_obj, 3)
         await query.edit_message_text(
             f"*Викторина (все категории)*\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))  # id для уникальности
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))
         )
 
     elif data.startswith("quiz_cat_"):
-        # Конкретная категория
         cat_for_quiz = data.split("_", 2)[2]
         context.user_data["quiz_category"] = cat_for_quiz
         word_obj = get_random_studied_word(user_id, cat_for_quiz)
@@ -487,6 +458,8 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
             )
             return
+        context.user_data["last_quiz_word"] = word_obj
+        context.user_data["last_quiz_cat"] = cat_for_quiz
         wrong = get_random_translations_for_quiz(cat_for_quiz, word_obj, 3)
         await query.edit_message_text(
             f"*Викторина* ({CATEGORIES[cat_for_quiz]['name']})\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
@@ -494,34 +467,27 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))
         )
 
-    # Обработка ответа викторины
     elif data.startswith("quiz_answer_"):
-        # Формат: quiz_answer_<word_id>_<выбранный перевод>
         parts = data.split("_", 2)
         if len(parts) < 3:
             return
         _, word_id_str, chosen_trans = parts
-        # word_id — это id объекта, который мы передавали при создании кнопок. Но в Python id() не сохраняется между сообщениями.
-        # Лучше передавать индекс слова и категорию. Для простоты будем искать слово по переводу? Нельзя, переводы могут повторяться.
-        # Переделаем: при создании вопроса сохранять в контекст (context.user_data) последнее слово и категорию.
-        # Сделаем проще: будем хранить в контексте последнее слово и категорию викторины.
-        last_quiz_word = context.user_data.get("last_quiz_word")
-        last_quiz_cat = context.user_data.get("last_quiz_cat")
-        if not last_quiz_word:
+        last_word = context.user_data.get("last_quiz_word")
+        last_cat = context.user_data.get("last_quiz_cat")
+        if not last_word:
             await query.edit_message_text("Ошибка. Попробуйте начать викторину заново.")
             return
-        correct_trans = last_quiz_word["translation"]
+        correct_trans = last_word["translation"]
         if chosen_trans == correct_trans:
             result = "✅ Правильно!"
         else:
             result = f"❌ Неправильно. Правильный ответ: *{correct_trans}*"
 
-        # Готовим следующий вопрос
-        if last_quiz_cat == "all":
+        # Следующий вопрос
+        if last_cat == "all":
             studied_words = get_all_studied_words(user_id)
             if studied_words:
                 next_word = random.choice(studied_words)
-                # Находим категорию следующего слова для подбора вариантов
                 next_cat = None
                 for key, info in CATEGORIES.items():
                     if next_word in info["words"]:
@@ -542,16 +508,16 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 )
             else:
                 await query.edit_message_text(
-                    f"{result}\n\nВикторина завершена, так как в выбранной категории нет больше изученных слов.",
+                    f"{result}\n\nВикторина завершена, так как нет больше изученных слов.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
                 )
         else:
-            studied = get_studied_indices(user_id, last_quiz_cat)
+            studied = get_studied_indices(user_id, last_cat)
             if studied:
                 next_idx = random.choice(studied)
-                next_word = CATEGORIES[last_quiz_cat]["words"][next_idx]
+                next_word = CATEGORIES[last_cat]["words"][next_idx]
                 context.user_data["last_quiz_word"] = next_word
-                wrong = get_random_translations_for_quiz(last_quiz_cat, next_word, 3)
+                wrong = get_random_translations_for_quiz(last_cat, next_word, 3)
                 next_text = (
                     f"{result}\n\n"
                     f"Следующее слово: **{next_word['word']}**\n\n"
@@ -564,11 +530,10 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 )
             else:
                 await query.edit_message_text(
-                    f"{result}\n\nВикторина завершена, так как в выбранной категории нет больше изученных слов.",
+                    f"{result}\n\nВикторина завершена, так как в этой категории нет больше изученных слов.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
                 )
 
-    # Обработка пустой кнопки (нет изученных)
     elif data == "noop":
         await query.answer("Пока нет изученных слов.", show_alert=True)
 
@@ -621,6 +586,8 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная категория.")
         return
     context.user_data["current_category"] = cat_key
+    # При смене категории очищаем список выданных сегодня слов
+    context.user_data["today_words"] = []
     up = get_user_progress(user_id)
     up["current_category"] = cat_key
     set_user_progress(user_id, up)
@@ -639,7 +606,6 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = Application.builder().token(TOKEN).updater(None).build()
 
-    # Команды
     app.add_handler(CommandHandler("start", start))
     count_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("set_count", set_count_start)],
@@ -650,19 +616,14 @@ async def main():
     )
     app.add_handler(count_conv_handler)
 
-    # Обработчики сообщений и кнопок
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
     app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
-
-    # Отдельный обработчик для выбора категории (обычный)
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
-    # Устанавливаем веб-хук
     webhook_url = f"{URL}/telegram"
     await app.bot.set_webhook(webhook_url, allowed_updates=Update.ALL_TYPES)
     print(f"Webhook set to {webhook_url}")
 
-    # Starlette для приёма веб-хуков
     async def telegram_webhook(request: Request) -> Response:
         await app.update_queue.put(Update.de_json(await request.json(), app.bot))
         return Response()
