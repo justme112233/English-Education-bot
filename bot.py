@@ -125,6 +125,7 @@ def get_category_buttons(user_id: str):
     return InlineKeyboardMarkup(buttons)
 
 def get_after_words_buttons():
+    # Возвращаем кнопку произношения
     keyboard = [
         [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words"),
          InlineKeyboardButton("🔄 Обратный порядок", callback_data="reverse_order")],
@@ -149,13 +150,13 @@ def get_quiz_category_buttons(user_id: str):
         buttons.append([InlineKeyboardButton("😢 Нет изученных слов", callback_data="noop")])
     return InlineKeyboardMarkup(buttons)
 
-def get_quiz_buttons(correct_translation, wrong_translations, word_key):
-    """word_key: строка вида 'cat_key:index'"""
+def get_quiz_buttons(correct_translation, wrong_translations):
+    """Создаёт кнопки для вопроса викторины, без word_id."""
     options = wrong_translations + [correct_translation]
     random.shuffle(options)
     keyboard = []
     for opt in options:
-        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_answer_{word_key}_{opt}")])
+        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_ans_{opt}")])
     keyboard.append([InlineKeyboardButton("🔙 Выйти в меню", callback_data="exit_quiz")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -167,7 +168,6 @@ def get_confirm_reset_buttons(cat_key):
     return InlineKeyboardMarkup(keyboard)
 
 def get_order_settings_buttons(current_order):
-    """Кнопки для выбора порядка слов в настройках"""
     keyboard = []
     if current_order != "en_ru":
         keyboard.append([InlineKeyboardButton("🇬🇧 Английский → Русский", callback_data="order_en_ru")])
@@ -177,14 +177,18 @@ def get_order_settings_buttons(current_order):
     return InlineKeyboardMarkup(keyboard)
 
 def get_words_count_buttons(current_count):
-    """Кнопки для выбора количества слов в день"""
-    keyboard = []
-    for cnt in [5, 10, 15, 20]:
-        if cnt != current_count:
-            keyboard.append([InlineKeyboardButton(f"{cnt} слов", callback_data=f"count_{cnt}")])
-    keyboard.append([InlineKeyboardButton("✏️ Ввести своё число", callback_data="count_custom")])
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(keyboard)
+    """Кнопки для выбора количества слов (1–10)."""
+    buttons = []
+    row = []
+    for i in range(1, 11):
+        row.append(InlineKeyboardButton(str(i), callback_data=f"count_{i}"))
+        if i % 5 == 0:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(buttons)
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ВИКТОРИНЫ ==========
 def get_studied_indices(user_id: str, cat_key: str):
@@ -196,22 +200,21 @@ def get_all_studied_words(user_id: str):
     for key, info in CATEGORIES.items():
         studied = get_studied_indices(user_id, key)
         for idx in studied:
-            all_words.append((key, idx, info["words"][idx]))
-    return all_words  # список кортежей (cat_key, index, word_obj)
+            all_words.append(info["words"][idx])
+    return all_words
 
 def get_random_studied_word(user_id: str, cat_key: str = None):
     if cat_key is None or cat_key == "all":
         all_words = get_all_studied_words(user_id)
         if not all_words:
-            return None, None, None
-        cat_key, idx, word_obj = random.choice(all_words)
-        return cat_key, idx, word_obj
+            return None
+        return random.choice(all_words)
     else:
         studied = get_studied_indices(user_id, cat_key)
         if not studied:
-            return None, None, None
+            return None
         idx = random.choice(studied)
-        return cat_key, idx, CATEGORIES[cat_key]["words"][idx]
+        return CATEGORIES[cat_key]["words"][idx]
 
 def get_random_translations_for_quiz(cat_key: str, correct_word_obj, count=3):
     if cat_key == "all":
@@ -267,16 +270,16 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "⚙️ Настройки":
         current_order = get_user_word_order(user_id)
         order_text = "🇬🇧 Английский → Русский" if current_order == "en_ru" else "🇷🇺 Русский → Английский"
-        # Показываем кнопки: изменить порядок, изменить количество слов, назад
-        keyboard = [
-            [InlineKeyboardButton(f"📖 Порядок слов: {order_text}", callback_data="order_settings")],
-            [InlineKeyboardButton(f"🔢 Количество слов: {get_user_words_per_day(user_id)}", callback_data="count_settings")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
-        ]
         await update.message.reply_text(
-            "⚙️ *Настройки*\n\nВыберите, что хотите изменить:",
+            f"⚙️ *Настройки*\n\n"
+            f"• Количество слов в день: *{get_user_words_per_day(user_id)}*\n"
+            f"• Порядок слов: *{order_text}*\n\n"
+            f"Что хотите изменить?",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔢 Количество слов", callback_data="show_count_settings")],
+                [InlineKeyboardButton("🔄 Порядок слов", callback_data="show_order_settings")]
+            ])
         )
         return
 
@@ -395,6 +398,49 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     cat = CATEGORIES[cat_key]
     words = cat["words"]
 
+    # ========== НАСТРОЙКИ ==========
+    if data == "show_count_settings":
+        current = get_user_words_per_day(user_id)
+        await query.edit_message_text(
+            f"⚙️ *Выбор количества слов*\n\nТекущее: {current}\n\nВыберите новое количество:",
+            parse_mode="Markdown",
+            reply_markup=get_words_count_buttons(current)
+        )
+        return
+
+    elif data == "show_order_settings":
+        current_order = get_user_word_order(user_id)
+        await query.edit_message_text(
+            "⚙️ *Выбор порядка слов*\n\nВыберите желаемый порядок:",
+            parse_mode="Markdown",
+            reply_markup=get_order_settings_buttons(current_order)
+        )
+        return
+
+    elif data.startswith("count_"):
+        new_count = int(data.split("_")[1])
+        set_user_words_per_day(user_id, new_count)
+        await query.edit_message_text(
+            f"✅ Количество слов установлено: {new_count} в день.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
+        )
+        return
+
+    elif data.startswith("order_"):
+        new_order = data.split("_")[1]
+        if new_order in ("en_ru", "ru_en"):
+            set_user_word_order(user_id, new_order)
+            order_text = "🇬🇧 Английский → Русский" if new_order == "en_ru" else "🇷🇺 Русский → Английский"
+            await query.edit_message_text(
+                f"✅ Порядок слов изменён на *{order_text}*.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
+            )
+        else:
+            await query.answer("Неверный порядок.")
+        return
+
+    # ========== ОСНОВНЫЕ ДЕЙСТВИЯ ==========
     if data == "more_words":
         today_indices = context.user_data.get("today_words", [])
         cat_prog = get_category_progress(user_id, cat_key)
@@ -446,6 +492,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         )
 
     elif data == "back_to_menu":
+        # Возвращаем основную клавиатуру, НЕ очищая today_words
         await query.message.reply_text("Возвращаюсь в главное меню.")
         await context.bot.send_message(
             chat_id=user_id,
@@ -494,60 +541,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             logger.error(f"gTTS error: {e}")
             await query.answer("Не удалось сгенерировать произношение.", show_alert=True)
 
-    # Обработка нажатий на кнопки настроек (из сообщения настроек)
-    elif data == "order_settings":
-        current_order = get_user_word_order(user_id)
-        await query.edit_message_text(
-            "Выберите порядок отображения слов:",
-            reply_markup=get_order_settings_buttons(current_order)
-        )
-    elif data == "count_settings":
-        current_count = get_user_words_per_day(user_id)
-        await query.edit_message_text(
-            f"Выберите количество слов в день (текущее: {current_count}):",
-            reply_markup=get_words_count_buttons(current_count)
-        )
-    elif data.startswith("order_"):
-        new_order = data.split("_", 1)[1]
-        if new_order in ("en_ru", "ru_en"):
-            set_user_word_order(user_id, new_order)
-            order_text = "🇬🇧 Английский → Русский" if new_order == "en_ru" else "🇷🇺 Русский → Английский"
-            await query.edit_message_text(
-                f"✅ Порядок слов изменён на *{order_text}*.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
-            )
-        else:
-            await query.answer("Неверный порядок.")
-    elif data.startswith("count_"):
-        if data == "count_custom":
-            await query.edit_message_text(
-                "Введите число от 1 до 10.\nНапример: `5` или `10`.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="count_settings")]])
-            )
-            # Здесь нужно перейти в состояние ожидания ввода, но для простоты оставим так – пользователь просто введёт число в чат.
-            # Сообщим пользователю, что нужно ввести число.
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="Просто напишите число от 1 до 10 в чат (например, 7).",
-                reply_markup=get_main_keyboard()
-            )
-            return
-        else:
-            try:
-                count = int(data.split("_")[1])
-                if 1 <= count <= 10:
-                    set_user_words_per_day(user_id, count)
-                    await query.edit_message_text(
-                        f"✅ Количество слов установлено: {count} в день.",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
-                    )
-                else:
-                    await query.answer("Число должно быть от 1 до 10.")
-            except:
-                await query.answer("Ошибка.")
-
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
         reset_category_progress(user_id, cat_to_reset)
@@ -579,30 +572,36 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_keyboard()
         )
 
-    # Викторина
+    # ========== ВИКТОРИНА ==========
     elif data == "quiz_all":
         context.user_data["quiz_category"] = "all"
-        all_words = get_all_studied_words(user_id)
-        if not all_words:
+        studied_words = get_all_studied_words(user_id)
+        if not studied_words:
             await query.edit_message_text(
                 "❌ У вас ещё нет изученных слов. Сначала выучите несколько слов через «Слова на сегодня».",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
             )
             return
-        cat_for_quiz, idx, word_obj = random.choice(all_words)
-        context.user_data["last_quiz_word_key"] = f"{cat_for_quiz}:{idx}"
-        context.user_data["last_quiz_cat"] = cat_for_quiz
-        wrong = get_random_translations_for_quiz(cat_for_quiz, word_obj, 3)
+        word_obj = random.choice(studied_words)
+        cat_for_options = None
+        for key, info in CATEGORIES.items():
+            if word_obj in info["words"]:
+                cat_for_options = key
+                break
+        # Сохраняем в контекст текущее слово и категорию
+        context.user_data["last_quiz_word"] = word_obj
+        context.user_data["last_quiz_cat"] = cat_for_options if cat_for_options else "all"
+        wrong = get_random_translations_for_quiz(cat_for_options if cat_for_options else "all", word_obj, 3)
         await query.edit_message_text(
             f"*Викторина (все категории)*\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, f"{cat_for_quiz}:{idx}")
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong)
         )
 
     elif data.startswith("quiz_cat_"):
         cat_for_quiz = data.split("_", 2)[2]
         context.user_data["quiz_category"] = cat_for_quiz
-        cat, idx, word_obj = get_random_studied_word(user_id, cat_for_quiz)
+        word_obj = get_random_studied_word(user_id, cat_for_quiz)
         if not word_obj:
             await query.edit_message_text(
                 f"❌ В категории *{CATEGORIES[cat_for_quiz]['name']}* нет изученных слов. Сначала выучите несколько слов.",
@@ -610,45 +609,42 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
             )
             return
-        context.user_data["last_quiz_word_key"] = f"{cat_for_quiz}:{idx}"
+        context.user_data["last_quiz_word"] = word_obj
         context.user_data["last_quiz_cat"] = cat_for_quiz
         wrong = get_random_translations_for_quiz(cat_for_quiz, word_obj, 3)
         await query.edit_message_text(
             f"*Викторина* ({CATEGORIES[cat_for_quiz]['name']})\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, f"{cat_for_quiz}:{idx}")
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong)
         )
 
-    elif data.startswith("quiz_answer_"):
-        parts = data.split("_", 2)
-        if len(parts) < 3:
-            return
-        _, word_key, chosen_trans = parts
-        # word_key имеет вид "cat_key:index"
-        try:
-            cat_for_quiz, idx_str = word_key.split(":")
-            idx = int(idx_str)
-            word_obj = CATEGORIES[cat_for_quiz]["words"][idx]
-        except:
+    elif data.startswith("quiz_ans_"):
+        # Формат: quiz_ans_<выбранный перевод>
+        chosen_trans = data.split("_", 2)[2]
+        last_word = context.user_data.get("last_quiz_word")
+        last_cat = context.user_data.get("last_quiz_cat")
+        if not last_word:
             await query.edit_message_text("Ошибка. Попробуйте начать викторину заново.")
             return
-
-        correct_trans = word_obj["translation"]
-        # Убираем возможные лишние пробелы
-        if chosen_trans.strip() == correct_trans.strip():
-            result = f"✅ *Правильно!*\n\n*Слово:* {word_obj['word']}\n*Перевод:* {word_obj['translation']}"
+        correct_trans = last_word["translation"]
+        if chosen_trans == correct_trans:
+            result = f"✅ *Правильно!*\n\n*Слово:* {last_word['word']}\n*Перевод:* {last_word['translation']}"
         else:
-            result = f"❌ *Неправильно.*\n\n*Слово:* {word_obj['word']}\n*Правильный перевод:* {word_obj['translation']}"
+            result = f"❌ *Неправильно.*\n\n*Слово:* {last_word['word']}\n*Правильный перевод:* {last_word['translation']}"
 
-        # Следующий вопрос
-        last_cat = context.user_data.get("last_quiz_cat")
+        # Готовим следующий вопрос
         if last_cat == "all":
-            all_words = get_all_studied_words(user_id)
-            if all_words:
-                next_cat, next_idx, next_word = random.choice(all_words)
-                context.user_data["last_quiz_word_key"] = f"{next_cat}:{next_idx}"
-                context.user_data["last_quiz_cat"] = next_cat
-                wrong = get_random_translations_for_quiz(next_cat, next_word, 3)
+            studied_words = get_all_studied_words(user_id)
+            if studied_words:
+                next_word = random.choice(studied_words)
+                next_cat = None
+                for key, info in CATEGORIES.items():
+                    if next_word in info["words"]:
+                        next_cat = key
+                        break
+                context.user_data["last_quiz_word"] = next_word
+                context.user_data["last_quiz_cat"] = next_cat if next_cat else "all"
+                wrong = get_random_translations_for_quiz(next_cat if next_cat else "all", next_word, 3)
                 next_text = (
                     f"{result}\n\n"
                     f"Следующее слово: **{next_word['word']}**\n\n"
@@ -657,7 +653,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 await query.edit_message_text(
                     next_text,
                     parse_mode="Markdown",
-                    reply_markup=get_quiz_buttons(next_word["translation"], wrong, f"{next_cat}:{next_idx}")
+                    reply_markup=get_quiz_buttons(next_word["translation"], wrong)
                 )
             else:
                 await query.edit_message_text(
@@ -669,7 +665,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             if studied:
                 next_idx = random.choice(studied)
                 next_word = CATEGORIES[last_cat]["words"][next_idx]
-                context.user_data["last_quiz_word_key"] = f"{last_cat}:{next_idx}"
+                context.user_data["last_quiz_word"] = next_word
                 wrong = get_random_translations_for_quiz(last_cat, next_word, 3)
                 next_text = (
                     f"{result}\n\n"
@@ -679,7 +675,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 await query.edit_message_text(
                     next_text,
                     parse_mode="Markdown",
-                    reply_markup=get_quiz_buttons(next_word["translation"], wrong, f"{last_cat}:{next_idx}")
+                    reply_markup=get_quiz_buttons(next_word["translation"], wrong)
                 )
             else:
                 await query.edit_message_text(
@@ -739,7 +735,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная категория.")
         return
     context.user_data["current_category"] = cat_key
-    context.user_data["today_words"] = []
+    context.user_data["today_words"] = []  # при смене категории сбрасываем список выданных сегодня
     up = get_user_progress(user_id)
     up["current_category"] = cat_key
     set_user_progress(user_id, up)
@@ -769,7 +765,7 @@ async def main():
     app.add_handler(count_conv_handler)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|order_settings|count_settings|order_|count_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
+    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_ans_|noop)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
     webhook_url = f"{URL}/telegram"
