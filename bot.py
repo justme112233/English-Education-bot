@@ -2,12 +2,15 @@ import os
 import asyncio
 import json
 import random
+import io
+import hashlib
 from starlette.applications import Starlette
 from starlette.responses import Response, PlainTextResponse
 from starlette.requests import Request
 from starlette.routing import Route
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
+from gtts import gTTS
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -25,6 +28,21 @@ CATEGORY_KEYS = list(CATEGORIES.keys())
 DEFAULT_CATEGORY = "travel"
 
 COUNT_INPUT = 1
+
+# Кэш для произношения
+voice_cache = {}
+
+def get_voice(word):
+    """Возвращает BytesIO с mp3-данными для произношения слова"""
+    key = hashlib.md5(word.encode()).hexdigest()
+    if key in voice_cache:
+        return voice_cache[key]
+    tts = gTTS(text=word, lang='en', slow=False)
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+    voice_cache[key] = mp3_fp
+    return mp3_fp
 
 # ========== ФУНКЦИИ ПРОГРЕССА ==========
 def load_progress():
@@ -96,11 +114,14 @@ def get_category_buttons(user_id: str):
         buttons.append([InlineKeyboardButton(text, callback_data=f"cat_{key}")])
     return InlineKeyboardMarkup(buttons)
 
-def get_after_words_buttons():
-    keyboard = [
-        [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words")],
-        [InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")]
-    ]
+def get_words_keyboard(chosen_words, word_indices):
+    """Создаёт инлайн-клавиатуру: каждая кнопка = слово + 🔊"""
+    keyboard = []
+    for i, (word_obj, idx) in enumerate(zip(chosen_words, word_indices)):
+        button_text = f"{i+1}. {word_obj['word']} 🔊"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"pronounce_{idx}_{word_obj['word']}")])
+    keyboard.append([InlineKeyboardButton("➕ Ещё слова", callback_data="more_words")])
+    keyboard.append([InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
 
 def get_quiz_category_buttons(user_id: str):
@@ -279,11 +300,11 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
 
-        msg = "*Сегодняшние слова:*\n\n" + "\n".join(f"{i+1}. {format_word(w)}" for i, w in enumerate(chosen_words))
+        # Отправляем сообщение с инлайн-кнопками для каждого слова
         await update.message.reply_text(
-            msg,
+            "*Сегодняшние слова:*\n\nНажми на слово, чтобы услышать произношение:",
             parse_mode="Markdown",
-            reply_markup=get_after_words_buttons()
+            reply_markup=get_words_keyboard(chosen_words, chosen_indices)
         )
 
     elif text == "🎮 Викторина":
@@ -348,7 +369,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                     f"🎉 Поздравляю! Ты изучил все {total} слов в теме *{cat['name']}*!\n"
                     f"Начинаю заново: вот новые слова.",
                     parse_mode="Markdown",
-                    reply_markup=get_after_words_buttons()
+                    reply_markup=get_words_keyboard([], [])
                 )
                 cat_prog = get_category_progress(user_id, cat_key)
                 used = cat_prog["used"]
@@ -374,15 +395,13 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
 
-        msg = "*Ещё слова:*\n\n" + "\n".join(f"{i+1}. {format_word(w)}" for i, w in enumerate(chosen_words))
         await query.message.reply_text(
-            msg,
+            "*Ещё слова:*\n\nНажми на слово, чтобы услышать произношение:",
             parse_mode="Markdown",
-            reply_markup=get_after_words_buttons()
+            reply_markup=get_words_keyboard(chosen_words, chosen_indices)
         )
 
     elif data == "back_to_menu":
-        # Возвращаем основную клавиатуру, НЕ очищая today_words
         await query.message.reply_text("Возвращаюсь в главное меню.")
         await context.bot.send_message(
             chat_id=user_id,
@@ -393,7 +412,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
         reset_category_progress(user_id, cat_to_reset)
-        # Если сбрасывается текущая категория, то очищаем today_words
         if cat_to_reset == context.user_data.get("current_category"):
             context.user_data["today_words"] = []
         await query.edit_message_text(
@@ -432,7 +450,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             )
             return
         word_obj = random.choice(studied_words)
-        # Находим категорию для подбора вариантов
         cat_for_options = None
         for key, info in CATEGORIES.items():
             if word_obj in info["words"]:
@@ -483,7 +500,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         else:
             result = f"❌ Неправильно. Правильный ответ: *{correct_trans}*"
 
-        # Следующий вопрос
         if last_cat == "all":
             studied_words = get_all_studied_words(user_id)
             if studied_words:
@@ -537,6 +553,16 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     elif data == "noop":
         await query.answer("Пока нет изученных слов.", show_alert=True)
 
+    elif data.startswith("pronounce_"):
+        # формат: pronounce_<index>_<word>
+        parts = data.split("_", 2)
+        if len(parts) < 3:
+            return
+        _, _, word = parts
+        voice_data = get_voice(word)
+        await query.message.reply_voice(voice=voice_data, caption=f"Произношение: {word}")
+        # не нужно менять сообщение, просто отвечаем
+
 # ========== КОМАНДА /set_count (альтернатива) ==========
 async def set_count_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -586,7 +612,6 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная категория.")
         return
     context.user_data["current_category"] = cat_key
-    # При смене категории очищаем список выданных сегодня слов
     context.user_data["today_words"] = []
     up = get_user_progress(user_id)
     up["current_category"] = cat_key
@@ -617,7 +642,7 @@ async def main():
     app.add_handler(count_conv_handler)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
+    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop|pronounce_)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
     webhook_url = f"{URL}/telegram"
