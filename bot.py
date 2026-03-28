@@ -7,7 +7,7 @@ from starlette.responses import Response, PlainTextResponse
 from starlette.requests import Request
 from starlette.routing import Route
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -24,6 +24,9 @@ CATEGORIES = data["categories"]          # dict: key -> {"name": str, "words": l
 CATEGORY_KEYS = list(CATEGORIES.keys())
 DEFAULT_CATEGORY = "travel"
 
+# Состояния для ConversationHandler
+COUNT_INPUT = 1
+
 # ========== ФУНКЦИИ ПРОГРЕССА ==========
 def load_progress():
     if os.path.exists(PROGRESS_FILE):
@@ -36,7 +39,7 @@ def save_progress(progress):
         json.dump(progress, f, ensure_ascii=False, indent=2)
 
 def get_user_progress(user_id: str):
-    """Возвращает прогресс пользователя: { category_key: {"used": [индексы], "last": [объекты слов]} }"""
+    """Возвращает прогресс пользователя: { category_key: {"used": [индексы], "last": [объекты слов]}, "current_category": str, "words_per_day": int }"""
     prog = load_progress()
     return prog.get(user_id, {})
 
@@ -68,12 +71,22 @@ def get_unused_indices(used, total):
 def format_word(word_obj):
     return f"**{word_obj['word']}**    {word_obj['transcription']}    \"{word_obj['pronunciation']}\"    {word_obj['translation']}"
 
+# ========== НАСТРОЙКИ КОЛИЧЕСТВА СЛОВ ==========
+def get_user_words_per_day(user_id: str) -> int:
+    up = get_user_progress(user_id)
+    return up.get("words_per_day", 5)
+
+def set_user_words_per_day(user_id: str, count: int):
+    up = get_user_progress(user_id)
+    up["words_per_day"] = count
+    set_user_progress(user_id, up)
+
 # ========== КЛАВИАТУРЫ ==========
 def get_main_keyboard():
     keyboard = [
         [KeyboardButton("📚 Слова на сегодня"), KeyboardButton("🔄 Повторить")],
         [KeyboardButton("📊 Прогресс"), KeyboardButton("🗑 Сбросить прогресс")],
-        [KeyboardButton("🎯 Выбрать тему")]
+        [KeyboardButton("🎯 Выбрать тему"), KeyboardButton("⚙️ Настройки")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -89,15 +102,21 @@ def get_category_buttons(user_id: str):
         buttons.append([InlineKeyboardButton(text, callback_data=f"cat_{key}")])
     return InlineKeyboardMarkup(buttons)
 
-# ========== ОБРАБОТЧИКИ ==========
+# ========== ОБРАБОТЧИКИ СООБЩЕНИЙ ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     # Устанавливаем текущую категорию в контексте (храним в памяти)
     if "current_category" not in context.user_data:
         context.user_data["current_category"] = DEFAULT_CATEGORY
+    # Также сохраняем текущую категорию в прогресс (для рассылки, если добавим)
+    up = get_user_progress(user_id)
+    if "current_category" not in up:
+        up["current_category"] = DEFAULT_CATEGORY
+        set_user_progress(user_id, up)
     await update.message.reply_text(
         f"👋 Привет! Я помогу выучить английские слова по темам.\n\n"
         f"Текущая тема: *{CATEGORIES[context.user_data['current_category']]['name']}*\n\n"
+        f"Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
         f"Нажимай кнопки:",
         parse_mode="Markdown",
         reply_markup=get_main_keyboard()
@@ -111,6 +130,16 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Выберите тему:",
             reply_markup=get_category_buttons(user_id)
+        )
+        return
+
+    if text == "⚙️ Настройки":
+        await update.message.reply_text(
+            "⚙️ *Настройки*\n\n"
+            f"• Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
+            "Используйте команду /set_count, чтобы изменить количество слов.",
+            parse_mode="Markdown",
+            reply_markup=get_main_keyboard()
         )
         return
 
@@ -129,7 +158,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reset_category_progress(user_id, cat_key)
             await update.message.reply_text(
                 f"🎉 Поздравляю! Ты изучил все {total} слов в теме *{cat['name']}*!\n"
-                f"Начинаю заново: вот 5 новых слов.",
+                f"Начинаю заново: вот новые слова.",
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard()
             )
@@ -137,7 +166,8 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             used = cat_prog["used"]
             unused = get_unused_indices(used, total)
 
-        count = min(5, len(unused))
+        words_per_day = get_user_words_per_day(user_id)
+        count = min(words_per_day, len(unused))
         chosen_indices = random.sample(unused, count)
         chosen_words = [words[i] for i in chosen_indices]
 
@@ -165,7 +195,8 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cat_prog = get_category_progress(user_id, cat_key)
         done = len(cat_prog["used"])
         await update.message.reply_text(
-            f"📊 Тема: *{cat['name']}*\nИзучено слов: *{done}* из *{total}*.",
+            f"📊 Тема: *{cat['name']}*\nИзучено слов: *{done}* из *{total}*.\n\n"
+            f"Всего слов в категории: {total}",
             parse_mode="Markdown",
             reply_markup=get_main_keyboard()
         )
@@ -187,25 +218,89 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная категория.")
         return
     context.user_data["current_category"] = cat_key
+    # Сохраняем текущую категорию в прогресс
+    up = get_user_progress(user_id)
+    up["current_category"] = cat_key
+    set_user_progress(user_id, up)
     await query.edit_message_text(
         f"✅ Выбрана тема: *{CATEGORIES[cat_key]['name']}*.\n"
         f"Теперь используй кнопки для изучения.",
-        parse_mode="Markdown",
+        parse_mode="Markdown"
+    )
+    # Отправляем клавиатуру отдельным сообщением, потому что инлайн-редактирование не поддерживает reply_markup
+    await context.bot.send_message(
+        chat_id=user_id,
+        text="Клавиатура активна.",
         reply_markup=get_main_keyboard()
     )
+
+# ========== КОМАНДА /set_count ==========
+async def set_count_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    current = get_user_words_per_day(user_id)
+    await update.message.reply_text(
+        f"Сколько слов вы хотите получать за раз? Введите число от 1 до 10.\n"
+        f"Текущее значение: {current}",
+        reply_markup=get_main_keyboard()
+    )
+    return COUNT_INPUT
+
+async def set_count_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    try:
+        count = int(update.message.text)
+        if 1 <= count <= 10:
+            set_user_words_per_day(user_id, count)
+            await update.message.reply_text(
+                f"✅ Количество слов установлено: {count} в день.",
+                reply_markup=get_main_keyboard()
+            )
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text(
+                "Пожалуйста, введите число от 1 до 10.",
+                reply_markup=get_main_keyboard()
+            )
+            return COUNT_INPUT
+    except ValueError:
+        await update.message.reply_text(
+            "Пожалуйста, введите целое число.",
+            reply_markup=get_main_keyboard()
+        )
+        return COUNT_INPUT
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Настройка отменена.", reply_markup=get_main_keyboard())
+    return ConversationHandler.END
 
 # ========== ЗАПУСК С ВЕБ-ХУКОМ ==========
 async def main():
     app = Application.builder().token(TOKEN).updater(None).build()
 
+    # Команды
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("set_count", set_count_start))  # простой вход, но дальше ConversationHandler
+
+    # ConversationHandler для установки количества слов
+    count_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("set_count", set_count_start)],
+        states={
+            COUNT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_count_input)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    app.add_handler(count_conv_handler)
+
+    # Обработчики сообщений и кнопок
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
+    # Устанавливаем веб-хук
     webhook_url = f"{URL}/telegram"
     await app.bot.set_webhook(webhook_url, allowed_updates=Update.ALL_TYPES)
     print(f"Webhook set to {webhook_url}")
 
+    # Starlette для приёма веб-хуков
     async def telegram_webhook(request: Request) -> Response:
         await app.update_queue.put(Update.de_json(await request.json(), app.bot))
         return Response()
