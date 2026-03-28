@@ -24,7 +24,7 @@ CATEGORIES = data["categories"]          # dict: key -> {"name": str, "words": l
 CATEGORY_KEYS = list(CATEGORIES.keys())
 DEFAULT_CATEGORY = "travel"
 
-# Состояния для ConversationHandler
+# Состояния для ConversationHandler (оставлен для /set_count, но можно не использовать)
 COUNT_INPUT = 1
 
 # ========== ФУНКЦИИ ПРОГРЕССА ==========
@@ -137,10 +137,27 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "⚙️ *Настройки*\n\n"
             f"• Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
-            "Используйте команду /set_count, чтобы изменить количество слов.",
+            "Чтобы изменить, просто напишите число от 1 до 10.\n"
+            "Например: `5` или `10`.",
             parse_mode="Markdown",
             reply_markup=get_main_keyboard()
         )
+        return
+
+    # Проверка на ввод числа для изменения количества слов
+    if text.isdigit():
+        num = int(text)
+        if 1 <= num <= 10:
+            set_user_words_per_day(user_id, num)
+            await update.message.reply_text(
+                f"✅ Количество слов установлено: {num} в день.",
+                reply_markup=get_main_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                "Пожалуйста, введите число от 1 до 10.",
+                reply_markup=get_main_keyboard()
+            )
         return
 
     # Получаем текущую категорию из user_data
@@ -192,11 +209,28 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
     elif text == "📊 Прогресс":
-        cat_prog = get_category_progress(user_id, cat_key)
-        done = len(cat_prog["used"])
+        # Получаем прогресс по всем категориям
+        user_progress = get_user_progress(user_id)
+        total_words = 0
+        total_studied = 0
+        categories_info = []
+        for key, info in CATEGORIES.items():
+            cat_prog = user_progress.get(key, {"used": []})
+            studied = len(cat_prog["used"])
+            total_cat = len(info["words"])
+            total_words += total_cat
+            total_studied += studied
+            categories_info.append(f"• *{info['name']}*: {studied}/{total_cat}")
+
+        # Формируем сообщение
+        overall_percent = (total_studied / total_words * 100) if total_words > 0 else 0
+        msg = (
+            f"📊 *Общий прогресс*\n"
+            f"Изучено: *{total_studied}* из *{total_words}* слов ({overall_percent:.1f}%)\n\n"
+            f"*По категориям:*\n" + "\n".join(categories_info)
+        )
         await update.message.reply_text(
-            f"📊 Тема: *{cat['name']}*\nИзучено слов: *{done}* из *{total}*.\n\n"
-            f"Всего слов в категории: {total}",
+            msg,
             parse_mode="Markdown",
             reply_markup=get_main_keyboard()
         )
@@ -234,7 +268,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_main_keyboard()
     )
 
-# ========== КОМАНДА /set_count ==========
+# ========== КОМАНДА /set_count (оставлена как альтернатива) ==========
 async def set_count_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     current = get_user_words_per_day(user_id)
@@ -279,9 +313,7 @@ async def main():
 
     # Команды
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("set_count", set_count_start))  # простой вход, но дальше ConversationHandler
-
-    # ConversationHandler для установки количества слов
+    # ConversationHandler для /set_count (оставлен как альтернатива)
     count_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("set_count", set_count_start)],
         states={
