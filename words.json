@@ -209,6 +209,216 @@
       {"word": "off-season", "transcription": "/ˌɒf ˈsiː.zən/", "pronunciation": "оф сизн", "translation": "несезон, низкий сезон"},
       {"word": "peak season", "transcription": "/ˌpiːk ˈsiː.zən/", "pronunciation": "пик сизн", "translation": "высокий сезон"},
       {"word": "wanderlust", "transcription": "/ˈwɒn.də.lʌst/", "pronunciation": "вондэласт", "translation": "страсть к путешествиям"}
+    ],
+    [
+      {"word": "boarding", "transcription": "/ˈbɔː.dɪŋ/", "pronunciation": "бординг", "translation": "посадка (на борт)"},
+      {"word": "baggage allowance", "transcription": "/ˈbæɡ.ɪdʒ əˈlaʊ.əns/", "pronunciation": "бэгидж элауэнс", "translation": "норма провоза багажа"},
+      {"word": "excess baggage", "transcription": "/ˈek.ses ˈbæɡ.ɪdʒ/", "pronunciation": "эксес бэгидж", "translation": "перевес багажа"},
+      {"word": "security check", "transcription": "/sɪˈkjʊə.rə.ti ˌtʃek/", "pronunciation": "сикьюэти чек", "translation": "досмотр безопасности"},
+      {"word": "immigration", "transcription": "/ˌɪm.ɪˈɡreɪ.ʃən/", "pronunciation": "имигрэйшн", "translation": "паспортный контроль"}
+    ],
+    [
+      {"word": "priority boarding", "transcription": "/praɪˈɒr.ə.ti ˈbɔː.dɪŋ/", "pronunciation": "прайорити бординг", "translation": "приоритетная посадка"},
+      {"word": "economy class", "transcription": "/ɪˈkɒn.ə.mi ˌklɑːs/", "pronunciation": "икономи клас", "translation": "эконом-класс"},
+      {"word": "business class", "transcription": "/ˈbɪz.nɪs ˌklɑːs/", "pronunciation": "бизнэс клас", "translation": "бизнес-класс"},
+      {"word": "first class", "transcription": "/ˈfɜːst ˌklɑːs/", "pronunciation": "фёст клас", "translation": "первый класс"},
+      {"word": "stopover", "transcription": "/ˈstɒp.əʊ.vər/", "pronunciation": "стопоувэ", "translation": "остановка по маршруту (более длительная)"}
+    ],
+    [
+      {"word": "boarding pass", "transcription": "/ˈbɔː.dɪŋ ˌpɑːs/", "pronunciation": "бординг пас", "translation": "посадочный талон"},
+      {"word": "e-ticket", "transcription": "/ˈiː ˌtɪk.ɪt/", "pronunciation": "и тикит", "translation": "электронный билет"},
+      {"word": "flight number", "transcription": "/ˈflaɪt ˌnʌm.bər/", "pronunciation": "флайт намбэ", "translation": "номер рейса"},
+      {"word": "carousel", "transcription": "/ˌkær.əˈsel/", "pronunciation": "кэрэсэл", "translation": "лента выдачи багажа"},
+      {"word": "transit", "transcription": "/ˈtræn.zɪt/", "pronunciation": "трэнзит", "translation": "транзит"}
+    ],
+    [
+      {"word": "one-way ticket", "transcription": "/ˌwʌn ˈweɪ ˌtɪk.ɪt/", "pronunciation": "уан уэй тикит", "translation": "билет в один конец"},
+      {"word": "return ticket", "transcription": "/rɪˈtɜːn ˌtɪk.ɪt/", "pronunciation": "ритё́н тикит", "translation": "обратный билет"},
+      {"word": "open ticket", "transcription": "/ˈəʊ.pən ˌtɪk.ɪt/", "pronunciation": "оупэн тикит", "translation": "билет без фиксированной даты"},
+      {"word": "standby", "transcription": "/ˈstænd.baɪ/", "pronunciation": "стэндбай", "translation": "ожидание свободного места"},
+      {"word": "frequent flyer", "transcription": "/ˌfriː.kwənt ˈflaɪ.ər/", "pronunciation": "фрикуэнт флайэ", "translation": "участник программы лояльности"}
+    ],
+    [
+      {"word": "resort", "transcription": "/rɪˈzɔːt/", "pronunciation": "ризо́т", "translation": "курорт, отель с развлечениями"},
+      {"word": "bed and breakfast", "transcription": "/ˌbed ən ˈbrek.fəst/", "pronunciation": "бэд энд брэкфэст", "translation": "гостевой дом с завтраком"},
+      {"word": "all-inclusive", "transcription": "/ˌɔːl ɪnˈkluː.sɪv/", "pronunciation": "ол инклюзив", "translation": "всё включено"},
+      {"word": "room service", "transcription": "/ˈruːm ˌsɜː.vɪs/", "pronunciation": "рум сёвис", "translation": "обслуживание в номере"},
+      {"word": "suite", "transcription": "/swiːt/", "pronunciation": "суит", "translation": "номер-люкс"}
+    ],
+    [
+      {"word": "check-in time", "transcription": "/ˈtʃek ɪn ˌtaɪm/", "pronunciation": "чек ин тайм", "translation": "время заселения"},
+      {"word": "check-out time", "transcription": "/ˈtʃek aʊt ˌtaɪm/", "pronunciation": "чек аут тайм", "translation": "время выселения"},
+      {"word": "late check-out", "transcription": "/ˌleɪt ˈtʃek aʊt/", "pronunciation": "лэйт чек аут", "translation": "поздний выезд"},
+      {"word": "deposit", "transcription": "/dɪˈpɒz.ɪt/", "pronunciation": "дипозит", "translation": "залог, депозит"},
+      {"word": "cancellation policy", "transcription": "/ˌkæn.səˈleɪ.ʃən ˌpɒl.ə.si/", "pronunciation": "кэнсэлэйшн полэси", "translation": "правила отмены брони"}
+    ],
+    [
+      {"word": "view", "transcription": "/vjuː/", "pronunciation": "вью", "translation": "вид (из окна)"},
+      {"word": "ocean view", "transcription": "/ˈəʊ.ʃən ˌvjuː/", "pronunciation": "оушэн вью", "translation": "вид на океан"},
+      {"word": "city view", "transcription": "/ˈsɪt.i ˌvjuː/", "pronunciation": "сити вью", "translation": "вид на город"},
+      {"word": "single room", "transcription": "/ˌsɪŋ.ɡəl ˈruːm/", "pronunciation": "сингл рум", "translation": "одноместный номер"},
+      {"word": "double room", "transcription": "/ˌdʌb.əl ˈruːm/", "pronunciation": "дабл рум", "translation": "двухместный номер"}
+    ],
+    [
+      {"word": "twin room", "transcription": "/ˌtwɪn ˈruːm/", "pronunciation": "твин рум", "translation": "номер с двумя отдельными кроватями"},
+      {"word": "king-size bed", "transcription": "/ˌkɪŋ.saɪz ˈbed/", "pronunciation": "кинг сайз бэд", "translation": "огромная кровать"},
+      {"word": "extra bed", "transcription": "/ˌek.strə ˈbed/", "pronunciation": "экстра бэд", "translation": "дополнительная кровать"},
+      {"word": "cot", "transcription": "/kɒt/", "pronunciation": "кот", "translation": "детская кроватка"},
+      {"word": "non-smoking room", "transcription": "/ˌnɒn ˈsməʊ.kɪŋ ˌruːm/", "pronunciation": "нон смоукинг рум", "translation": "номер для некурящих"}
+    ],
+    [
+      {"word": "breakfast buffet", "transcription": "/ˈbrek.fəst ˈbʊ.feɪ/", "pronunciation": "брэкфэст буфэ", "translation": "завтрак «шведский стол»"},
+      {"word": "menu", "transcription": "/ˈmen.juː/", "pronunciation": "менью", "translation": "меню"},
+      {"word": "wine list", "transcription": "/ˈwaɪn ˌlɪst/", "pronunciation": "уайн лист", "translation": "винная карта"},
+      {"word": "cover charge", "transcription": "/ˈkʌv.ər ˌtʃɑːdʒ/", "pronunciation": "кавэ чадж", "translation": "плата за обслуживание (в ресторане)"},
+      {"word": "service charge", "transcription": "/ˈsɜː.vɪs ˌtʃɑːdʒ/", "pronunciation": "сёвис чадж", "translation": "сервисный сбор"}
+    ],
+    [
+      {"word": "appetizer", "transcription": "/ˈæp.ə.taɪ.zər/", "pronunciation": "эпэтайзэ", "translation": "закуска"},
+      {"word": "main course", "transcription": "/ˌmeɪn ˈkɔːs/", "pronunciation": "мэйн корс", "translation": "основное блюдо"},
+      {"word": "dessert", "transcription": "/dɪˈzɜːt/", "pronunciation": "дизё́т", "translation": "десерт"},
+      {"word": "side dish", "transcription": "/ˈsaɪd ˌdɪʃ/", "pronunciation": "сайд диш", "translation": "гарнир"},
+      {"word": "beverage", "transcription": "/ˈbev.ər.ɪdʒ/", "pronunciation": "бэвэридж", "translation": "напиток"}
+    ],
+    [
+      {"word": "tap water", "transcription": "/ˌtæp ˈwɔː.tər/", "pronunciation": "тэп уотэ", "translation": "вода из-под крана"},
+      {"word": "still water", "transcription": "/ˌstɪl ˈwɔː.tər/", "pronunciation": "стил уотэ", "translation": "негазированная вода"},
+      {"word": "sparkling water", "transcription": "/ˌspɑː.klɪŋ ˈwɔː.tər/", "pronunciation": "спаклинг уотэ", "translation": "газированная вода"},
+      {"word": "food allergy", "transcription": "/ˈfuːd ˌæl.ə.dʒi/", "pronunciation": "фуд элэджи", "translation": "пищевая аллергия"},
+      {"word": "vegetarian", "transcription": "/ˌvedʒ.ɪˈteə.ri.ən/", "pronunciation": "вэджетэриэн", "translation": "вегетарианец"}
+    ],
+    [
+      {"word": "vegan", "transcription": "/ˈviː.ɡən/", "pronunciation": "вигэн", "translation": "веган"},
+      {"word": "gluten-free", "transcription": "/ˌɡluː.tən ˈfriː/", "pronunciation": "глютэн фри", "translation": "без глютена"},
+      {"word": "dairy-free", "transcription": "/ˌdeə.ri ˈfriː/", "pronunciation": "дээри фри", "translation": "без молочных продуктов"},
+      {"word": "chef", "transcription": "/ʃef/", "pronunciation": "шэф", "translation": "шеф-повар"},
+      {"word": "waiter", "transcription": "/ˈweɪ.tər/", "pronunciation": "уэйтэ", "translation": "официант"}
+    ],
+    [
+      {"word": "weather forecast", "transcription": "/ˈweð.ər ˌfɔː.kɑːst/", "pronunciation": "уэзэ фокаст", "translation": "прогноз погоды"},
+      {"word": "rainy", "transcription": "/ˈreɪ.ni/", "pronunciation": "рэйни", "translation": "дождливый"},
+      {"word": "sunny", "transcription": "/ˈsʌn.i/", "pronunciation": "сани", "translation": "солнечный"},
+      {"word": "cloudy", "transcription": "/ˈklaʊ.di/", "pronunciation": "клауди", "translation": "облачный"},
+      {"word": "windy", "transcription": "/ˈwɪn.di/", "pronunciation": "уинди", "translation": "ветреный"}
+    ],
+    [
+      {"word": "humidity", "transcription": "/hjuːˈmɪd.ə.ti/", "pronunciation": "хьюмидити", "translation": "влажность"},
+      {"word": "temperature", "transcription": "/ˈtem.prə.tʃər/", "pronunciation": "тэмпрэчэ", "translation": "температура"},
+      {"word": "degree", "transcription": "/dɪˈɡriː/", "pronunciation": "дигри", "translation": "градус"},
+      {"word": "umbrella", "transcription": "/ʌmˈbrel.ə/", "pronunciation": "амбрэла", "translation": "зонт"},
+      {"word": "sunglasses", "transcription": "/ˈsʌn.ɡlɑː.sɪz/", "pronunciation": "сангласиз", "translation": "солнечные очки"}
+    ],
+    [
+      {"word": "waterfall", "transcription": "/ˈwɔː.tə.fɔːl/", "pronunciation": "уотэфол", "translation": "водопад"},
+      {"word": "mountain", "transcription": "/ˈmaʊn.tɪn/", "pronunciation": "маунтин", "translation": "гора"},
+      {"word": "lake", "transcription": "/leɪk/", "pronunciation": "лэйк", "translation": "озеро"},
+      {"word": "forest", "transcription": "/ˈfɒr.ɪst/", "pronunciation": "форист", "translation": "лес"},
+      {"word": "desert", "transcription": "/ˈdez.ət/", "pronunciation": "дэзэт", "translation": "пустыня"}
+    ],
+    [
+      {"word": "nature reserve", "transcription": "/ˈneɪ.tʃə rɪˌzɜːv/", "pronunciation": "нэйчэ ризёв", "translation": "заповедник"},
+      {"word": "national park", "transcription": "/ˌnæʃ.ən.əl ˈpɑːk/", "pronunciation": "нэшнл пак", "translation": "национальный парк"},
+      {"word": "wildlife", "transcription": "/ˈwaɪld.laɪf/", "pronunciation": "уайлдлайф", "translation": "дикая природа"},
+      {"word": "campfire", "transcription": "/ˈkæmp.faɪər/", "pronunciation": "кэмпфайэ", "translation": "костёр"},
+      {"word": "tent", "transcription": "/tent/", "pronunciation": "тэнт", "translation": "палатка"}
+    ],
+    [
+      {"word": "phrasebook", "transcription": "/ˈfreɪz.bʊk/", "pronunciation": "фрэйзбук", "translation": "разговорник"},
+      {"word": "interpreter", "transcription": "/ɪnˈtɜː.prə.tər/", "pronunciation": "интёпрэтэ", "translation": "переводчик (устный)"},
+      {"word": "translation app", "transcription": "/trænzˈleɪ.ʃən ˌæp/", "pronunciation": "трэнзлэйшн эп", "translation": "приложение-переводчик"},
+      {"word": "sign", "transcription": "/saɪn/", "pronunciation": "сайн", "translation": "вывеска, знак"},
+      {"word": "currency exchange", "transcription": "/ˈkʌr.ən.si ɪksˈtʃeɪndʒ/", "pronunciation": "карэнси иксчэйндж", "translation": "обмен валюты"}
+    ],
+    [
+      {"word": "ATM", "transcription": "/ˌeɪ.tiːˈem/", "pronunciation": "эй ти эм", "translation": "банкомат"},
+      {"word": "credit card", "transcription": "/ˈkred.ɪt ˌkɑːd/", "pronunciation": "крэдит кад", "translation": "кредитная карта"},
+      {"word": "debit card", "transcription": "/ˈdeb.ɪt ˌkɑːd/", "pronunciation": "дэбит кад", "translation": "дебетовая карта"},
+      {"word": "cash machine", "transcription": "/ˈkæʃ məˌʃiːn/", "pronunciation": "кэш мэшин", "translation": "банкомат (BrE)"},
+      {"word": "receipt", "transcription": "/rɪˈsiːt/", "pronunciation": "рисит", "translation": "чек, квитанция"}
+    ],
+    [
+      {"word": "souvenir", "transcription": "/ˌsuː.vənˈɪər/", "pronunciation": "сувенир", "translation": "сувенир"},
+      {"word": "handmade", "transcription": "/ˌhændˈmeɪd/", "pronunciation": "хэндмэйд", "translation": "ручная работа"},
+      {"word": "local product", "transcription": "/ˌləʊ.kəl ˈprɒd.ʌkt/", "pronunciation": "лоукл продэкт", "translation": "местный продукт"},
+      {"word": "bargaining", "transcription": "/ˈbɑː.ɡɪn.ɪŋ/", "pronunciation": "багининг", "translation": "торг"},
+      {"word": "price tag", "transcription": "/ˈpraɪs ˌtæɡ/", "pronunciation": "прайс тэг", "translation": "ценник"}
+    ],
+    [
+      {"word": "discount", "transcription": "/ˈdɪs.kaʊnt/", "pronunciation": "дискаунт", "translation": "скидка"},
+      {"word": "sale", "transcription": "/seɪl/", "pronunciation": "сэйл", "translation": "распродажа"},
+      {"word": "expensive", "transcription": "/ɪkˈspen.sɪv/", "pronunciation": "икспэнсив", "translation": "дорогой"},
+      {"word": "cheap", "transcription": "/tʃiːp/", "pronunciation": "чип", "translation": "дешёвый"},
+      {"word": "overpriced", "transcription": "/ˌəʊ.vəˈpraɪst/", "pronunciation": "оувэпрайст", "translation": "слишком дорогой"}
+    ],
+    [
+      {"word": "first aid", "transcription": "/ˌfɜːst ˈeɪd/", "pronunciation": "фёст эйд", "translation": "первая помощь"},
+      {"word": "first aid kit", "transcription": "/ˌfɜːst ˈeɪd ˌkɪt/", "pronunciation": "фёст эйд кит", "translation": "аптечка"},
+      {"word": "insurance claim", "transcription": "/ɪnˈʃʊə.rəns ˌkleɪm/", "pronunciation": "иншурэнс клэйм", "translation": "страховой случай"},
+      {"word": "lost property", "transcription": "/ˌlɒst ˈprɒp.ə.ti/", "pronunciation": "лост пропэти", "translation": "бюро находок"},
+      {"word": "embassy", "transcription": "/ˈem.bə.si/", "pronunciation": "эмбэси", "translation": "посольство"}
+    ],
+    [
+      {"word": "travel advisory", "transcription": "/ˈtræv.əl ədˌvaɪ.zər.i/", "pronunciation": "трэвэл эдвайзэри", "translation": "рекомендации для путешественников"},
+      {"word": "safe", "transcription": "/seɪf/", "pronunciation": "сэйф", "translation": "сейф"},
+      {"word": "to report", "transcription": "/rɪˈpɔːt/", "pronunciation": "рипот", "translation": "сообщать (в полицию)"},
+      {"word": "to claim", "transcription": "/kleɪm/", "pronunciation": "клэйм", "translation": "заявлять (о страховке, багаже)"},
+      {"word": "to evacuate", "transcription": "/ɪˈvæk.ju.eɪt/", "pronunciation": "ивэкьюэйт", "translation": "эвакуироваться"}
+    ],
+    [
+      {"word": "health certificate", "transcription": "/ˈhelθ səˌtɪf.ɪ.kət/", "pronunciation": "хэлс сэтификэт", "translation": "справка о здоровье"},
+      {"word": "quarantine", "transcription": "/ˈkwɒr.ən.tiːn/", "pronunciation": "корэнтин", "translation": "карантин"},
+      {"word": "travel clinic", "transcription": "/ˈtræv.əl ˌklɪn.ɪk/", "pronunciation": "трэвэл клиник", "translation": "прививочный центр"},
+      {"word": "vaccine", "transcription": "/ˈvæk.siːn/", "pronunciation": "ваксин", "translation": "вакцина"},
+      {"word": "test result", "transcription": "/ˈtest rɪˌzʌlt/", "pronunciation": "тэст ризалт", "translation": "результат теста"}
+    ],
+    [
+      {"word": "check-in online", "transcription": "/ˌtʃek ɪn ˈɒn.laɪn/", "pronunciation": "чек ин онлайн", "translation": "онлайн-регистрация"},
+      {"word": "baggage drop", "transcription": "/ˈbæɡ.ɪdʒ ˌdrɒp/", "pronunciation": "бэгидж дроп", "translation": "сдача багажа (стойка)"},
+      {"word": "self-service kiosk", "transcription": "/ˌself ˈsɜː.vɪs ˈkiː.ɒsk/", "pronunciation": "сэлф сёвис киоск", "translation": "терминал самостоятельной регистрации"},
+      {"word": "mobile boarding pass", "transcription": "/ˌməʊ.baɪl ˈbɔː.dɪŋ ˌpɑːs/", "pronunciation": "моубайл бординг пас", "translation": "мобильный посадочный талон"},
+      {"word": "flight status", "transcription": "/ˈflaɪt ˌsteɪ.təs/", "pronunciation": "флайт стэйтэс", "translation": "статус рейса"}
+    ],
+    [
+      {"word": "travel app", "transcription": "/ˈtræv.əl ˌæp/", "pronunciation": "трэвэл эп", "translation": "приложение для путешествий"},
+      {"word": "offline map", "transcription": "/ˌɒfˈlaɪn ˈmæp/", "pronunciation": "офлайн мэп", "translation": "офлайн-карта"},
+      {"word": "data roaming", "transcription": "/ˈdeɪ.tə ˌrəʊ.mɪŋ/", "pronunciation": "дэйта роуминг", "translation": "передача данных в роуминге"},
+      {"word": "Wi-Fi", "transcription": "/ˈwaɪ faɪ/", "pronunciation": "уай фай", "translation": "вай-фай"},
+      {"word": "power bank", "transcription": "/ˈpaʊ.ər ˌbæŋk/", "pronunciation": "пауэ бэнк", "translation": "портативное зарядное устройство"}
+    ],
+    [
+      {"word": "travel blog", "transcription": "/ˈtræv.əl ˌblɒɡ/", "pronunciation": "трэвэл блог", "translation": "блог о путешествиях"},
+      {"word": "review", "transcription": "/rɪˈvjuː/", "pronunciation": "ривью", "translation": "отзыв"},
+      {"word": "rating", "transcription": "/ˈreɪ.tɪŋ/", "pronunciation": "рэйтниг", "translation": "оценка, рейтинг"},
+      {"word": "recommend", "transcription": "/ˌrek.əˈmend/", "pronunciation": "рэкэмэнд", "translation": "рекомендовать"},
+      {"word": "highlight", "transcription": "/ˈhaɪ.laɪt/", "pronunciation": "хайлайт", "translation": "главное впечатление, изюминка"}
+    ],
+    [
+      {"word": "postcard", "transcription": "/ˈpəʊst.kɑːd/", "pronunciation": "поусткад", "translation": "открытка"},
+      {"word": "travel journal", "transcription": "/ˈtræv.əl ˌdʒɜː.nəl/", "pronunciation": "трэвэл джёнал", "translation": "дневник путешествий"},
+      {"word": "memories", "transcription": "/ˈmem.ər.iz/", "pronunciation": "мэмэриз", "translation": "воспоминания"},
+      {"word": "photo album", "transcription": "/ˈfəʊ.təʊ ˌæl.bəm/", "pronunciation": "фотоу элбэм", "translation": "фотоальбом"},
+      {"word": "to share", "transcription": "/ʃeər/", "pronunciation": "шэа", "translation": "делиться (впечатлениями)"}
+    ],
+    [
+      {"word": "farewell", "transcription": "/ˌfeəˈwel/", "pronunciation": "фэауэл", "translation": "прощание"},
+      {"word": "departure tax", "transcription": "/dɪˈpɑː.tʃər ˌtæks/", "pronunciation": "дипачэ такс", "translation": "сбор за вылет (в некоторых странах)"},
+      {"word": "gate change", "transcription": "/ˈɡeɪt ˌtʃeɪndʒ/", "pronunciation": "гэйт чэндж", "translation": "смена выхода на посадку"},
+      {"word": "final call", "transcription": "/ˌfaɪ.nəl ˈkɔːl/", "pronunciation": "файнэл кол", "translation": "последнее объявление на посадку"},
+      {"word": "last minute", "transcription": "/ˌlɑːst ˈmɪn.ɪt/", "pronunciation": "ласт минит", "translation": "в последний момент"}
+    ],
+    [
+      {"word": "to return", "transcription": "/rɪˈtɜːn/", "pronunciation": "ритё́н", "translation": "возвращаться"},
+      {"word": "to recall", "transcription": "/rɪˈkɔːl/", "pronunciation": "рикол", "translation": "вспоминать"},
+      {"word": "to miss", "transcription": "/mɪs/", "pronunciation": "мис", "translation": "скучать"},
+      {"word": "to plan", "transcription": "/plæn/", "pronunciation": "плэн", "translation": "планировать"},
+      {"word": "to dream", "transcription": "/driːm/", "pronunciation": "дрим", "translation": "мечтать"}
+    ],
+    [
+      {"word": "adventure travel", "transcription": "/ədˈven.tʃər ˌtræv.əl/", "pronunciation": "эдвэнчэ трэвэл", "translation": "приключенческий туризм"},
+      {"word": "cultural tourism", "transcription": "/ˈkʌl.tʃər.əl ˈtʊə.rɪ.zəm/", "pronunciation": "калчэрел туризм", "translation": "культурный туризм"},
+      {"word": "sustainable travel", "transcription": "/səˈsteɪ.nə.bəl ˈtræv.əl/", "pronunciation": "сэстэйнабл трэвэл", "translation": "устойчивый туризм"},
+      {"word": "travel tip", "transcription": "/ˈtræv.əl ˌtɪp/", "pronunciation": "трэвэл тип", "translation": "совет путешественнику"},
+      {"word": "lifetime experience", "transcription": "/ˌlaɪf.taɪm ɪkˈspɪə.ri.əns/", "pronunciation": "лайфтайм икспириэнс", "translation": "впечатление на всю жизнь"}
     ]
   ]
 }
