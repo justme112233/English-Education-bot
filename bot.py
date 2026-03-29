@@ -1026,7 +1026,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                     f"{result}\n\nВикторина завершена, так как в этой категории нет больше изученных слов.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
                 )
-                )
+                
         else:
             studied = get_studied_indices(user_id, last_cat)
             if studied:
