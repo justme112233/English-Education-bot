@@ -2,3 +2,4 @@ python-telegram-bot==20.*
 uvicorn
 starlette
 gTTS
+apscheduler==3.10.4
