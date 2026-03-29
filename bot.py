@@ -323,12 +323,12 @@ def get_quiz_category_buttons(user_id: str):
         buttons.append([InlineKeyboardButton("😢 Нет изученных слов", callback_data="noop")])
     return InlineKeyboardMarkup(buttons)
 
-def get_quiz_buttons(correct_translation, wrong_translations, word_id):
+def get_quiz_buttons(correct_translation, wrong_translations):
     options = wrong_translations + [correct_translation]
     random.shuffle(options)
     keyboard = []
     for opt in options:
-        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_answer_{word_id}_{opt}")])
+        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_ans_{opt}")])
     keyboard.append([InlineKeyboardButton("🔙 Выйти в меню", callback_data="exit_quiz")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -946,7 +946,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(
             f"*Викторина (все категории)*\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))
+            reply_markup=await query.edit_message_text(..., reply_markup=get_quiz_buttons(word_obj["translation"], wrong))
         )
         return
 
@@ -971,11 +971,8 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         )
         return
 
-    if data.startswith("quiz_answer_"):
-        parts = data.split("_", 2)
-        if len(parts) < 3:
-            return
-        _, word_id_str, chosen_trans = parts
+    elif data.startswith("quiz_ans_"):
+        chosen_trans = data.split("_", 2)[2]
         last_word = context.user_data.get("last_quiz_word")
         last_cat = context.user_data.get("last_quiz_cat")
         if not last_word:
@@ -987,7 +984,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         else:
             result = f"❌ *Неправильно.*\n\n*Слово:* {last_word['word']}\n*Правильный перевод:* {last_word['translation']}"
 
-        # Следующий вопрос
+        # Готовим следующий вопрос
         if last_cat == "all":
             studied_words = get_all_studied_words(user_id)
             if studied_words:
@@ -1004,12 +1001,31 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 await query.edit_message_text(
                     next_text,
                     parse_mode="Markdown",
-                    reply_markup=get_quiz_buttons(next_word["translation"], wrong, id(next_word))
+                    reply_markup=get_quiz_buttons(next_word["translation"], wrong)
                 )
             else:
                 await query.edit_message_text(
                     f"{result}\n\nВикторина завершена, так как нет больше изученных слов.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
+                )
+        else:
+            studied = get_studied_indices(user_id, last_cat)
+            if studied:
+                next_idx = random.choice(studied)
+                next_word = CATEGORIES[last_cat]["words"][next_idx]
+                context.user_data["last_quiz_word"] = next_word
+                wrong = get_random_translations_for_quiz(last_cat, next_word, 3)
+                next_text = f"{result}\n\nСледующее слово: **{next_word['word']}**\n\nВыберите перевод:"
+                await query.edit_message_text(
+                    next_text,
+                    parse_mode="Markdown",
+                    reply_markup=get_quiz_buttons(next_word["translation"], wrong)
+                )
+            else:
+                await query.edit_message_text(
+                    f"{result}\n\nВикторина завершена, так как в этой категории нет больше изученных слов.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
+                )
                 )
         else:
             studied = get_studied_indices(user_id, last_cat)
