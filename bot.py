@@ -1144,7 +1144,7 @@ async def main():
 
     # Обработчики сообщений и колбэков
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|show_daily_settings|daily_toggle|daily_set_time|daily_time_\\d{2}_\\d{2}|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
+    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|show_daily_settings|daily_toggle|daily_set_time|daily_time_\\d{2}_\\d{2}|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_ans_|noop)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
     # Планировщик
