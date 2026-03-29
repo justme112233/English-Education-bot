@@ -340,6 +340,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
         context.user_data["last_pronounce_words"] = chosen_words
+        context.user_data["pronounce_remaining"] = chosen_words.copy()
         context.user_data["current_batch_words"] = chosen_words
 
         order = get_user_word_order(user_id)
@@ -481,6 +482,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         today_indices.extend(chosen_indices)
         context.user_data["today_words"] = today_indices
         context.user_data["last_pronounce_words"] = chosen_words
+        context.user_data["pronounce_remaining"] = chosen_words.copy()
         context.user_data["current_batch_words"] = chosen_words
 
         order = get_user_word_order(user_id)
@@ -514,7 +516,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_after_words_buttons()
         )
 
-    elif data == "pronounce":
+        elif data == "pronounce":
         if not GTTS_AVAILABLE:
             await query.answer("Функция произношения временно недоступна.", show_alert=True)
             return
@@ -522,7 +524,17 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         if not last_words:
             await query.answer("Нет слов для озвучивания. Сначала получите слова на сегодня.", show_alert=True)
             return
-        word_obj = random.choice(last_words)
+        remaining = context.user_data.get("pronounce_remaining", [])
+        if not remaining:
+            # Если список пуст, но есть слова в порции – создаём заново
+            remaining = last_words.copy()
+            context.user_data["pronounce_remaining"] = remaining
+        if not remaining:
+            await query.answer("Все слова из этой порции уже озвучены. Нажмите «Ещё слова» для новой порции.", show_alert=True)
+            return
+        word_obj = random.choice(remaining)
+        remaining.remove(word_obj)
+        context.user_data["pronounce_remaining"] = remaining
         text_to_speak = word_obj["word"]
         try:
             tts = gTTS(text=text_to_speak, lang='en')
