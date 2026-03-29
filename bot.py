@@ -665,6 +665,12 @@ async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     streak = up.get("streak", 0)
     await update.message.reply_text(f"🔥 Ваш текущий стрик: *{streak}* дней подряд!", parse_mode="Markdown")
 
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
+    backup_progress()
+    await update.message.reply_text("✅ Резервная копия прогресса создана.")
+
 # ========== ОБРАБОТЧИКИ ИНЛАЙН-КНОПОК ==========
 async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_rate_limit(update):
