@@ -1,3 +1,5 @@
+from apscheduler.schedulers.background import BackgroundScheduler
+import time
 import os
 import asyncio
 import json
@@ -24,6 +26,10 @@ except ImportError as e:
     GTTS_AVAILABLE = False
     logger.warning(f"gTTS not available: {e}")
 
+# ========== КЭШ ПРОГРЕССА ==========
+progress_cache = None       # будет загружен при первом обращении
+progress_dirty = set()      # множество user_id, чей прогресс изменился
+
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 URL = os.environ.get("RENDER_EXTERNAL_URL", "https://your-app.onrender.com")
@@ -43,14 +49,49 @@ COUNT_INPUT = 1
 
 # ========== ФУНКЦИИ ПРОГРЕССА ==========
 def load_progress():
-    if os.path.exists(PROGRESS_FILE):
-        with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    global progress_cache
+    if progress_cache is None:
+        if os.path.exists(PROGRESS_FILE):
+            with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+                progress_cache = json.load(f)
+        else:
+            progress_cache = {}
+    return progress_cache
 
 def save_progress(progress):
+    global progress_cache, progress_dirty
+    # Обновляем кэш
+    progress_cache = progress
+    # Помечаем всех, чьи данные изменились
+    # В вашем коде прогресс хранится по user_id, поэтому можно просто перезаписать весь кэш
+    # Но для эффективности будем считать, что изменились все ключи, которые есть в новом прогрессе
+    # и удалённые ключи тоже изменились. Проще добавить все ключи в dirty.
+    for user_id in progress.keys():
+        progress_dirty.add(user_id)
+    # Также нужно учесть удалённых пользователей – но в вашем коде они не удаляются,
+    # только перезаписываются. Поэтому этого достаточно.
+    # Фактической записи на диск здесь НЕТ.
+
+def flush_progress():
+    global progress_cache, progress_dirty
+    if not progress_dirty or progress_cache is None:
+        return
+    # Загружаем текущий файл на диске, чтобы не затереть параллельные изменения (если бот запущен в нескольких экземплярах)
+    if os.path.exists(PROGRESS_FILE):
+        with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+            disk_data = json.load(f)
+    else:
+        disk_data = {}
+    # Объединяем: для всех user_id, которые в dirty, берём значение из кэша
+    for user_id in progress_dirty:
+        if user_id in progress_cache:
+            disk_data[user_id] = progress_cache[user_id]
+        else:
+            disk_data.pop(user_id, None)
+    # Записываем на диск
     with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
-        json.dump(progress, f, ensure_ascii=False, indent=2)
+        json.dump(disk_data, f, ensure_ascii=False, indent=2)
+    progress_dirty.clear()
 
 def get_user_progress(user_id: str):
     prog = load_progress()
@@ -778,6 +819,11 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
     app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_ans_|noop)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
+    
+     # Запускаем фоновый планировщик для сброса прогресса на диск каждые 10 секунд
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(flush_progress, 'interval', seconds=10)
+    scheduler.start()
 
     webhook_url = f"{URL}/telegram"
     await app.bot.set_webhook(webhook_url, allowed_updates=Update.ALL_TYPES)
@@ -806,3 +852,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+    import atexit
+    atexit.register(flush_progress)
