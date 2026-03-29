@@ -1,5 +1,3 @@
-from apscheduler.schedulers.background import BackgroundScheduler
-import time
 import os
 import asyncio
 import json
@@ -12,6 +10,8 @@ from starlette.requests import Request
 from starlette.routing import Route
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes, ConversationHandler
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -25,10 +25,6 @@ try:
 except ImportError as e:
     GTTS_AVAILABLE = False
     logger.warning(f"gTTS not available: {e}")
-
-# ========== КЭШ ПРОГРЕССА ==========
-progress_cache = None       # будет загружен при первом обращении
-progress_dirty = set()      # множество user_id, чей прогресс изменился
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -47,7 +43,10 @@ DEFAULT_CATEGORY = "travel"
 
 COUNT_INPUT = 1
 
-# ========== ФУНКЦИИ ПРОГРЕССА ==========
+# ========== КЭШ ПРОГРЕССА С ОТЛОЖЕННОЙ ЗАПИСЬЮ ==========
+progress_cache = None       # будет загружен при первом вызове
+progress_dirty = set()      # множество user_id, чей прогресс изменился
+
 def load_progress():
     global progress_cache
     if progress_cache is None:
@@ -62,21 +61,16 @@ def save_progress(progress):
     global progress_cache, progress_dirty
     # Обновляем кэш
     progress_cache = progress
-    # Помечаем всех, чьи данные изменились
-    # В вашем коде прогресс хранится по user_id, поэтому можно просто перезаписать весь кэш
-    # Но для эффективности будем считать, что изменились все ключи, которые есть в новом прогрессе
-    # и удалённые ключи тоже изменились. Проще добавить все ключи в dirty.
+    # Помечаем всех пользователей как грязных (упрощённо)
     for user_id in progress.keys():
         progress_dirty.add(user_id)
-    # Также нужно учесть удалённых пользователей – но в вашем коде они не удаляются,
-    # только перезаписываются. Поэтому этого достаточно.
-    # Фактической записи на диск здесь НЕТ.
+    # Не пишем на диск здесь
 
 def flush_progress():
     global progress_cache, progress_dirty
     if not progress_dirty or progress_cache is None:
         return
-    # Загружаем текущий файл на диске, чтобы не затереть параллельные изменения (если бот запущен в нескольких экземплярах)
+    # Загружаем текущий файл на диске, чтобы не затереть параллельные изменения
     if os.path.exists(PROGRESS_FILE):
         with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
             disk_data = json.load(f)
@@ -92,7 +86,9 @@ def flush_progress():
     with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
         json.dump(disk_data, f, ensure_ascii=False, indent=2)
     progress_dirty.clear()
+    logger.debug("Progress flushed to disk")
 
+# ========== ФУНКЦИИ ПРОГРЕССА (используют кэш) ==========
 def get_user_progress(user_id: str):
     prog = load_progress()
     return prog.get(user_id, {})
@@ -100,7 +96,7 @@ def get_user_progress(user_id: str):
 def set_user_progress(user_id: str, category_progress):
     prog = load_progress()
     prog[user_id] = category_progress
-    save_progress(prog)
+    save_progress(prog)   # обновляет кэш и помечает dirty
 
 def get_category_progress(user_id: str, cat_key: str):
     up = get_user_progress(user_id)
@@ -119,7 +115,6 @@ def get_unused_indices(used, total):
     used_set = set(used)
     return list(all_indices - used_set)
 
-# Форматирование слова в зависимости от порядка
 def format_word_by_order(word_obj, order):
     if order == "en_ru":
         return f"**{word_obj['word']}**    {word_obj['transcription']}    \"{word_obj['pronunciation']}\"    {word_obj['translation']}"
@@ -138,7 +133,7 @@ def set_user_words_per_day(user_id: str, count: int):
 
 def get_user_word_order(user_id: str) -> str:
     up = get_user_progress(user_id)
-    return up.get("word_order", "en_ru")  # "en_ru" или "ru_en"
+    return up.get("word_order", "en_ru")
 
 def set_user_word_order(user_id: str, order: str):
     up = get_user_progress(user_id)
@@ -166,12 +161,11 @@ def get_category_buttons(user_id: str):
     return InlineKeyboardMarkup(buttons)
 
 def get_after_words_buttons():
-    # Возвращаем кнопку произношения
     keyboard = [
         [InlineKeyboardButton("➕ Ещё слова", callback_data="more_words"),
          InlineKeyboardButton("🔄 Обратный порядок", callback_data="reverse_order")],
-        [InlineKeyboardButton("🔊 Произношение", callback_data="pronounce"),
-         InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")]
+        [InlineKeyboardButton("🔊 Произношение", callback_data="pronounce")],
+        [InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -191,13 +185,12 @@ def get_quiz_category_buttons(user_id: str):
         buttons.append([InlineKeyboardButton("😢 Нет изученных слов", callback_data="noop")])
     return InlineKeyboardMarkup(buttons)
 
-def get_quiz_buttons(correct_translation, wrong_translations):
-    """Создаёт кнопки для вопроса викторины, без word_id."""
+def get_quiz_buttons(correct_translation, wrong_translations, word_id):
     options = wrong_translations + [correct_translation]
     random.shuffle(options)
     keyboard = []
     for opt in options:
-        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_ans_{opt}")])
+        keyboard.append([InlineKeyboardButton(opt, callback_data=f"quiz_answer_{word_id}_{opt}")])
     keyboard.append([InlineKeyboardButton("🔙 Выйти в меню", callback_data="exit_quiz")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -216,20 +209,6 @@ def get_order_settings_buttons(current_order):
         keyboard.append([InlineKeyboardButton("🇷🇺 Русский → Английский", callback_data="order_ru_en")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
-
-def get_words_count_buttons(current_count):
-    """Кнопки для выбора количества слов (1–10)."""
-    buttons = []
-    row = []
-    for i in range(1, 11):
-        row.append(InlineKeyboardButton(str(i), callback_data=f"count_{i}"))
-        if i % 5 == 0:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(buttons)
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ВИКТОРИНЫ ==========
 def get_studied_indices(user_id: str, cat_key: str):
@@ -315,12 +294,9 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚙️ *Настройки*\n\n"
             f"• Количество слов в день: *{get_user_words_per_day(user_id)}*\n"
             f"• Порядок слов: *{order_text}*\n\n"
-            f"Что хотите изменить?",
+            f"Изменить порядок можно ниже:",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔢 Количество слов", callback_data="show_count_settings")],
-                [InlineKeyboardButton("🔄 Порядок слов", callback_data="show_order_settings")]
-            ])
+            reply_markup=get_order_settings_buttons(current_order)
         )
         return
 
@@ -440,49 +416,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     cat = CATEGORIES[cat_key]
     words = cat["words"]
 
-    # ========== НАСТРОЙКИ ==========
-    if data == "show_count_settings":
-        current = get_user_words_per_day(user_id)
-        await query.edit_message_text(
-            f"⚙️ *Выбор количества слов*\n\nТекущее: {current}\n\nВыберите новое количество:",
-            parse_mode="Markdown",
-            reply_markup=get_words_count_buttons(current)
-        )
-        return
-
-    elif data == "show_order_settings":
-        current_order = get_user_word_order(user_id)
-        await query.edit_message_text(
-            "⚙️ *Выбор порядка слов*\n\nВыберите желаемый порядок:",
-            parse_mode="Markdown",
-            reply_markup=get_order_settings_buttons(current_order)
-        )
-        return
-
-    elif data.startswith("count_"):
-        new_count = int(data.split("_")[1])
-        set_user_words_per_day(user_id, new_count)
-        await query.edit_message_text(
-            f"✅ Количество слов установлено: {new_count} в день.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
-        )
-        return
-
-    elif data.startswith("order_"):
-        new_order = data.split("_")[1]
-        if new_order in ("en_ru", "ru_en"):
-            set_user_word_order(user_id, new_order)
-            order_text = "🇬🇧 Английский → Русский" if new_order == "en_ru" else "🇷🇺 Русский → Английский"
-            await query.edit_message_text(
-                f"✅ Порядок слов изменён на *{order_text}*.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
-            )
-        else:
-            await query.answer("Неверный порядок.")
-        return
-
-    # ========== ОСНОВНЫЕ ДЕЙСТВИЯ ==========
     if data == "more_words":
         today_indices = context.user_data.get("today_words", [])
         cat_prog = get_category_progress(user_id, cat_key)
@@ -535,7 +468,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         )
 
     elif data == "back_to_menu":
-        # Возвращаем основную клавиатуру, НЕ очищая today_words
         await query.message.reply_text("Возвращаюсь в главное меню.")
         await context.bot.send_message(
             chat_id=user_id,
@@ -592,7 +524,21 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         except Exception as e:
             logger.error(f"gTTS error: {e}")
             await query.answer("Не удалось сгенерировать произношение.", show_alert=True)
-        
+
+    elif data.startswith("order_"):
+        new_order = data.split("_", 1)[1]
+        if new_order in ("en_ru", "ru_en"):
+            set_user_word_order(user_id, new_order)
+            order_text = "🇬🇧 Английский → Русский" if new_order == "en_ru" else "🇷🇺 Русский → Английский"
+            await query.edit_message_text(
+                f"✅ Порядок слов изменён на *{order_text}*.\n\n"
+                f"Теперь новые слова будут выводиться в этом формате.",
+                parse_mode="Markdown",
+                reply_markup=get_order_settings_buttons(new_order)
+            )
+        else:
+            await query.answer("Неверный порядок.")
+
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
         reset_category_progress(user_id, cat_to_reset)
@@ -624,7 +570,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_keyboard()
         )
 
-    # ========== ВИКТОРИНА ==========
     elif data == "quiz_all":
         context.user_data["quiz_category"] = "all"
         studied_words = get_all_studied_words(user_id)
@@ -640,14 +585,13 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             if word_obj in info["words"]:
                 cat_for_options = key
                 break
-        # Сохраняем в контекст текущее слово и категорию
         context.user_data["last_quiz_word"] = word_obj
         context.user_data["last_quiz_cat"] = cat_for_options if cat_for_options else "all"
         wrong = get_random_translations_for_quiz(cat_for_options if cat_for_options else "all", word_obj, 3)
         await query.edit_message_text(
             f"*Викторина (все категории)*\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong)
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))
         )
 
     elif data.startswith("quiz_cat_"):
@@ -667,12 +611,14 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(
             f"*Викторина* ({CATEGORIES[cat_for_quiz]['name']})\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong)
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))
         )
 
-    elif data.startswith("quiz_ans_"):
-        # Формат: quiz_ans_<выбранный перевод>
-        chosen_trans = data.split("_", 2)[2]
+    elif data.startswith("quiz_answer_"):
+        parts = data.split("_", 2)
+        if len(parts) < 3:
+            return
+        _, word_id_str, chosen_trans = parts
         last_word = context.user_data.get("last_quiz_word")
         last_cat = context.user_data.get("last_quiz_cat")
         if not last_word:
@@ -684,7 +630,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         else:
             result = f"❌ *Неправильно.*\n\n*Слово:* {last_word['word']}\n*Правильный перевод:* {last_word['translation']}"
 
-        # Готовим следующий вопрос
         if last_cat == "all":
             studied_words = get_all_studied_words(user_id)
             if studied_words:
@@ -697,15 +642,11 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 context.user_data["last_quiz_word"] = next_word
                 context.user_data["last_quiz_cat"] = next_cat if next_cat else "all"
                 wrong = get_random_translations_for_quiz(next_cat if next_cat else "all", next_word, 3)
-                next_text = (
-                    f"{result}\n\n"
-                    f"Следующее слово: **{next_word['word']}**\n\n"
-                    f"Выберите перевод:"
-                )
+                next_text = f"{result}\n\nСледующее слово: **{next_word['word']}**\n\nВыберите перевод:"
                 await query.edit_message_text(
                     next_text,
                     parse_mode="Markdown",
-                    reply_markup=get_quiz_buttons(next_word["translation"], wrong)
+                    reply_markup=get_quiz_buttons(next_word["translation"], wrong, id(next_word))
                 )
             else:
                 await query.edit_message_text(
@@ -719,15 +660,11 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                 next_word = CATEGORIES[last_cat]["words"][next_idx]
                 context.user_data["last_quiz_word"] = next_word
                 wrong = get_random_translations_for_quiz(last_cat, next_word, 3)
-                next_text = (
-                    f"{result}\n\n"
-                    f"Следующее слово: **{next_word['word']}**\n\n"
-                    f"Выберите перевод:"
-                )
+                next_text = f"{result}\n\nСледующее слово: **{next_word['word']}**\n\nВыберите перевод:"
                 await query.edit_message_text(
                     next_text,
                     parse_mode="Markdown",
-                    reply_markup=get_quiz_buttons(next_word["translation"], wrong)
+                    reply_markup=get_quiz_buttons(next_word["translation"], wrong, id(next_word))
                 )
             else:
                 await query.edit_message_text(
@@ -738,7 +675,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     elif data == "noop":
         await query.answer("Пока нет изученных слов.", show_alert=True)
 
-# ========== КОМАНДА /set_count (альтернатива) ==========
+# ========== КОМАНДА /set_count ==========
 async def set_count_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     current = get_user_words_per_day(user_id)
@@ -787,7 +724,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная категория.")
         return
     context.user_data["current_category"] = cat_key
-    context.user_data["today_words"] = []  # при смене категории сбрасываем список выданных сегодня
+    context.user_data["today_words"] = []
     up = get_user_progress(user_id)
     up["current_category"] = cat_key
     set_user_progress(user_id, up)
@@ -817,13 +754,15 @@ async def main():
     app.add_handler(count_conv_handler)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_ans_|noop)"))
+    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
-    
-     # Запускаем фоновый планировщик для сброса прогресса на диск каждые 10 секунд
+
+    # Запускаем фоновый планировщик для сброса прогресса на диск каждые 10 секунд
     scheduler = BackgroundScheduler()
     scheduler.add_job(flush_progress, 'interval', seconds=10)
     scheduler.start()
+    # Регистрируем вызов flush_progress при завершении
+    atexit.register(flush_progress)
 
     webhook_url = f"{URL}/telegram"
     await app.bot.set_webhook(webhook_url, allowed_updates=Update.ALL_TYPES)
@@ -852,6 +791,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-    import atexit
-    atexit.register(flush_progress)
