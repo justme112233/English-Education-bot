@@ -1,4 +1,5 @@
 {
+  "categories": {
   "pronouns": {
   "name": "Местоимения",
   "words": [
@@ -155,7 +156,6 @@
     {"word": "to wish", "transcription": "/tuː wɪʃ/", "pronunciation": "ту уиш", "translation": "желать"}
   ]
 },
-  "categories": {
     "travel": {
       "name": "Путешествия",
       "words": [
@@ -789,7 +789,7 @@
     {"word": "EUR.1", "transcription": "/jʊər wʌn/", "pronunciation": "юр уан", "translation": "сертификат EUR.1"},
     {"word": "ATA carnet", "transcription": "/ˈɑː.tə kɑːˈneɪ/", "pronunciation": "ата карнэй", "translation": "книжка АТА"},
     {"word": "e-CMR", "transcription": "/iː siː em ɑː/", "pronunciation": "и си эм а", "translation": "электронная CMR"},
-    {"word": "tracking", "transcription": "/ˈtræk.ɪŋ/", "pronunciation": "трэкинг", "translation": "отслеживание"}
+    {"word": "tracking", "transcription": "/ˈtræk.ɪŋ/", "pronunciation": "трэкинг", "translation": "отслеживание"},
     {"word": "to load", "transcription": "/tə ləʊd/", "pronunciation": "ту лоуд", "translation": "грузить"},
     {"word": "to unload", "transcription": "/tə ʌnˈləʊd/", "pronunciation": "ту анлоуд", "translation": "разгружать"},
     {"word": "to transport", "transcription": "/tə trænˈspɔːt/", "pronunciation": "ту транспоут", "translation": "перевозить"},
@@ -831,4 +831,6 @@
     {"word": "to compensate", "transcription": "/tə ˈkɒm.pən.seɪt/", "pronunciation": "ту компэнсэйт", "translation": "компенсировать"},
     {"word": "to coordinate", "transcription": "/tə kəʊˈɔː.dɪ.neɪt/", "pronunciation": "ту коодинэйт", "translation": "координировать"}
   ]
+}
+}
 }
