@@ -983,7 +983,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             result = f"✅ *Правильно!*\n\n*Слово:* {last_word['word']}\n*Перевод:* {last_word['translation']}"
         else:
             result = f"❌ *Неправильно.*\n\n*Слово:* {last_word['word']}\n*Правильный перевод:* {last_word['translation']}"
-
+			
         # Готовим следующий вопрос
         if last_cat == "all":
             studied_words = get_all_studied_words(user_id)
@@ -1026,29 +1026,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
                     f"{result}\n\nВикторина завершена, так как в этой категории нет больше изученных слов.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
                 )
-                
-        else:
-            studied = get_studied_indices(user_id, last_cat)
-            if studied:
-                next_idx = random.choice(studied)
-                next_word = CATEGORIES[last_cat]["words"][next_idx]
-                context.user_data["last_quiz_word"] = next_word
-                wrong = get_random_translations_for_quiz(last_cat, next_word, 3)
-                next_text = f"{result}\n\nСледующее слово: **{next_word['word']}**\n\nВыберите перевод:"
-                await query.edit_message_text(
-                    next_text,
-                    parse_mode="Markdown",
-                    reply_markup=get_quiz_buttons(next_word["translation"], wrong, id(next_word))
-                )
-            else:
-                await query.edit_message_text(
-                    f"{result}\n\nВикторина завершена, так как в этой категории нет больше изученных слов.",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="exit_quiz")]])
-                )
-        return
-
-    if data == "noop":
-        await query.answer("Пока нет изученных слов.", show_alert=True)
         return
 
 # ========== КОМАНДА /set_count ==========
