@@ -516,7 +516,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_after_words_buttons()
         )
 
-        elif data == "pronounce":
+    elif data == "pronounce":
     if not GTTS_AVAILABLE:
         await query.answer("Функция произношения временно недоступна.", show_alert=True)
         return
@@ -551,7 +551,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logger.error(f"gTTS error: {e}")
         await query.answer("Не удалось сгенерировать произношение.", show_alert=True)
-
+        
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
         reset_category_progress(user_id, cat_to_reset)
