@@ -4,6 +4,9 @@ import json
 import random
 import io
 import logging
+import time
+import shutil
+from datetime import datetime, time as dt_time
 from starlette.applications import Starlette
 from starlette.responses import Response, PlainTextResponse
 from starlette.requests import Request
@@ -44,8 +47,8 @@ DEFAULT_CATEGORY = "travel"
 COUNT_INPUT = 1
 
 # ========== КЭШ ПРОГРЕССА С ОТЛОЖЕННОЙ ЗАПИСЬЮ ==========
-progress_cache = None       # будет загружен при первом вызове
-progress_dirty = set()      # множество user_id, чей прогресс изменился
+progress_cache = None
+progress_dirty = set()
 
 def load_progress():
     global progress_cache
@@ -61,25 +64,21 @@ def flush_progress():
     global progress_cache, progress_dirty
     if not progress_dirty or progress_cache is None:
         return
-    # Загружаем текущий файл на диске, чтобы не затереть параллельные изменения
     if os.path.exists(PROGRESS_FILE):
         with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
             disk_data = json.load(f)
     else:
         disk_data = {}
-    # Объединяем: для всех user_id, которые в dirty, берём значение из кэша
     for user_id in progress_dirty:
         if user_id in progress_cache:
             disk_data[user_id] = progress_cache[user_id]
         else:
             disk_data.pop(user_id, None)
-    # Записываем на диск
     with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
         json.dump(disk_data, f, ensure_ascii=False, indent=2)
     progress_dirty.clear()
     logger.debug("Progress flushed to disk")
 
-# ========== ФУНКЦИИ ПРОГРЕССА (используют кэш) ==========
 def get_user_progress(user_id: str):
     prog = load_progress()
     return prog.get(user_id, {})
@@ -111,10 +110,10 @@ def get_unused_indices(used, total):
 def format_word_by_order(word_obj, order):
     if order == "en_ru":
         return f"**{word_obj['word']}**    {word_obj['transcription']}    \"{word_obj['pronunciation']}\"    {word_obj['translation']}"
-    else:  # ru_en
+    else:
         return f"**{word_obj['translation']}**    {word_obj['word']}    {word_obj['transcription']}    \"{word_obj['pronunciation']}\""
 
-# ========== НАСТРОЙКИ КОЛИЧЕСТВА СЛОВ И ПОРЯДКА ==========
+# ========== НАСТРОЙКИ КОЛИЧЕСТВА СЛОВ, ПОРЯДКА И ЕЖЕДНЕВНОЙ РАССЫЛКИ ==========
 def get_user_words_per_day(user_id: str) -> int:
     up = get_user_progress(user_id)
     return up.get("words_per_day", 5)
@@ -132,6 +131,107 @@ def set_user_word_order(user_id: str, order: str):
     up = get_user_progress(user_id)
     up["word_order"] = order
     set_user_progress(user_id, up)
+
+# Ежедневная рассылка
+def get_daily_settings(user_id: str):
+    up = get_user_progress(user_id)
+    return up.get("daily", {"enabled": False, "time": None, "last_sent": None})
+
+def set_daily_settings(user_id: str, enabled: bool = None, daily_time: str = None, last_sent: str = None):
+    up = get_user_progress(user_id)
+    if "daily" not in up:
+        up["daily"] = {}
+    if enabled is not None:
+        up["daily"]["enabled"] = enabled
+    if daily_time is not None:
+        up["daily"]["time"] = daily_time
+    if last_sent is not None:
+        up["daily"]["last_sent"] = last_sent
+    set_user_progress(user_id, up)
+
+# ========== РЕЗЕРВНОЕ КОПИРОВАНИЕ ==========
+def backup_progress():
+    if not os.path.exists(PROGRESS_FILE):
+        return
+    os.makedirs("backups", exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"backups/progress_{timestamp}.json"
+    try:
+        shutil.copy2(PROGRESS_FILE, backup_path)
+        # Удаляем старые, оставляя последние 30
+        backups = sorted([f for f in os.listdir("backups") if f.startswith("progress_")])
+        while len(backups) > 30:
+            os.remove(os.path.join("backups", backups.pop(0)))
+        logger.info(f"Progress backed up to {backup_path}")
+    except Exception as e:
+        logger.error(f"Backup failed: {e}")
+
+# ========== ЛИМИТЫ ЗАПРОСОВ ==========
+user_last_call = {}
+RATE_LIMIT_SECONDS = 1
+
+async def check_rate_limit(update: Update) -> bool:
+    user_id = str(update.effective_user.id)
+    now = time.time()
+    last = user_last_call.get(user_id, 0)
+    if now - last < RATE_LIMIT_SECONDS:
+        try:
+            if update.callback_query:
+                await update.callback_query.answer("Слишком быстро! Подождите секунду.", show_alert=True)
+            else:
+                await update.message.reply_text("⏳ Пожалуйста, не так быстро. Подождите секунду.")
+        except:
+            pass
+        return False
+    user_last_call[user_id] = now
+    return True
+
+# ========== ФУНКЦИЯ ОТПРАВКИ СЛОВ (используется как для ручного, так и для автоматического режима) ==========
+async def send_words_to_user(bot, user_id: str, is_daily=False):
+    """Отправляет слова пользователю (порцию). Если is_daily=True, не увеличивает счётчик (чтобы не дублировать дневную порцию)."""
+    # Получаем данные пользователя
+    up = get_user_progress(user_id)
+    cat_key = up.get("current_category", DEFAULT_CATEGORY)
+    if cat_key not in CATEGORIES:
+        cat_key = DEFAULT_CATEGORY
+    cat = CATEGORIES[cat_key]
+    words = cat["words"]
+    total = len(words)
+    cat_prog = get_category_progress(user_id, cat_key)
+    used = cat_prog["used"]
+    unused = get_unused_indices(used, total)
+    if not unused:
+        # Если все слова изучены, сбрасываем категорию
+        reset_category_progress(user_id, cat_key)
+        cat_prog = get_category_progress(user_id, cat_key)
+        used = cat_prog["used"]
+        unused = get_unused_indices(used, total)
+    words_per_day = get_user_words_per_day(user_id)
+    count = min(words_per_day, len(unused))
+    chosen_indices = random.sample(unused, count)
+    chosen_words = [words[i] for i in chosen_indices]
+
+    # Сохраняем прогресс (если is_daily=False, то увеличиваем использованные слова)
+    if not is_daily:
+        new_used = used + chosen_indices
+        cat_prog["used"] = new_used
+        cat_prog["last"] = chosen_words
+        set_category_progress(user_id, cat_key, cat_prog)
+
+    # Сохраняем для произношения и обратного порядка
+    context_user_data = {}  # не можем получить context, поэтому будем использовать отдельное хранилище? В ежедневной рассылке контекста нет.
+    # Для произношения при рассылке это не нужно, так как кнопки не будут показаны.
+    # Для ручного режима (при вызове из команд) контекст есть. Поэтому в функции send_words_to_user не сохраняем в контекст.
+    # При вызове из команд мы дополнительно запишем в контекст.
+
+    order = get_user_word_order(user_id)
+    msg = "*Ваши слова на сегодня:*\n\n" + "\n".join(f"{i+1}. {format_word_by_order(w, order)}" for i, w in enumerate(chosen_words))
+    try:
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown", reply_markup=get_after_words_buttons())
+        # Для ручного вызова кнопки будут, для автоматического – тоже (но контекст не будет хранить chosen_words – поэтому произношение не сработает? В автоматическом режиме кнопки всё равно появятся, но при нажатии на "Произношение" не будет last_pronounce_words в контексте. Решение: сохранять последние слова в прогресс пользователя? Можно добавить поле last_daily_words. Упростим: при ежедневной рассылке не будем показывать кнопки, а просто отправим слова без кнопок.
+        # Лучше при ежедневной рассылке отправлять слова без инлайн-кнопок, чтобы не было ложных ожиданий. Изменим:
+    except Exception as e:
+        logger.error(f"Failed to send daily words to {user_id}: {e}")
 
 # ========== КЛАВИАТУРЫ ==========
 def get_main_keyboard():
@@ -204,7 +304,6 @@ def get_order_settings_buttons(current_order):
     return InlineKeyboardMarkup(keyboard)
 
 def get_count_settings_buttons(current_count):
-    """Кнопки для выбора количества слов (1–10)"""
     buttons = []
     row = []
     for i in range(1, 11):
@@ -217,53 +316,97 @@ def get_count_settings_buttons(current_count):
     buttons.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ВИКТОРИНЫ ==========
-def get_studied_indices(user_id: str, cat_key: str):
+def get_daily_settings_buttons(enabled, current_time):
+    """Кнопки для настройки ежедневной рассылки"""
+    keyboard = []
+    status = "✅ Включена" if enabled else "❌ Выключена"
+    keyboard.append([InlineKeyboardButton(f"Статус: {status}", callback_data="daily_toggle")])
+    if enabled:
+        keyboard.append([InlineKeyboardButton(f"⏰ Время: {current_time or 'не выбрано'}", callback_data="daily_set_time")])
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(keyboard)
+
+def get_time_selection_buttons():
+    """Кнопки для выбора часа и минуты (упрощённо – только час)"""
+    keyboard = []
+    row = []
+    for h in range(0, 24):
+        row.append(InlineKeyboardButton(f"{h:02d}:00", callback_data=f"daily_time_{h:02d}_00"))
+        if (h+1) % 4 == 0:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="daily_settings")])
+    return InlineKeyboardMarkup(keyboard)
+
+# ========== ЕЖЕДНЕВНАЯ РАССЫЛКА ==========
+async def check_and_send_daily(app):
+    """Проверяет всех пользователей и отправляет слова тем, у кого наступило время и ещё не отправлено сегодня."""
+    now = datetime.now()
+    current_date = now.date().isoformat()
+    current_time_str = now.strftime("%H:%M")
+    progress = load_progress()  # используем кэш
+    for user_id, user_data in progress.items():
+        daily = user_data.get("daily", {})
+        if not daily.get("enabled", False):
+            continue
+        daily_time = daily.get("time")
+        last_sent = daily.get("last_sent")
+        if not daily_time:
+            continue
+        if last_sent == current_date:
+            continue
+        if daily_time == current_time_str:
+            # Отправляем слова
+            try:
+                await send_daily_words_to_user(app.bot, user_id)
+                # Обновляем last_sent
+                daily["last_sent"] = current_date
+                set_user_progress(user_id, user_data)
+                logger.info(f"Sent daily words to {user_id} at {current_time_str}")
+            except Exception as e:
+                logger.error(f"Failed to send daily to {user_id}: {e}")
+
+async def send_daily_words_to_user(bot, user_id: str):
+    """Отправляет порцию слов без увеличения счётчика (чтобы пользователь мог сам ещё получить слова)."""
+    up = get_user_progress(user_id)
+    cat_key = up.get("current_category", DEFAULT_CATEGORY)
+    if cat_key not in CATEGORIES:
+        cat_key = DEFAULT_CATEGORY
+    cat = CATEGORIES[cat_key]
+    words = cat["words"]
+    total = len(words)
     cat_prog = get_category_progress(user_id, cat_key)
-    return cat_prog.get("used", [])
+    used = cat_prog["used"]
+    unused = get_unused_indices(used, total)
+    if not unused:
+        # Все слова изучены, сбрасываем категорию
+        reset_category_progress(user_id, cat_key)
+        cat_prog = get_category_progress(user_id, cat_key)
+        used = cat_prog["used"]
+        unused = get_unused_indices(used, total)
+    words_per_day = get_user_words_per_day(user_id)
+    count = min(words_per_day, len(unused))
+    chosen_indices = random.sample(unused, count)
+    chosen_words = [words[i] for i in chosen_indices]
 
-def get_all_studied_words(user_id: str):
-    all_words = []
-    for key, info in CATEGORIES.items():
-        studied = get_studied_indices(user_id, key)
-        for idx in studied:
-            all_words.append(info["words"][idx])
-    return all_words
+    # НЕ обновляем used, чтобы пользователь мог получить эти же слова через команду "Слова на сегодня" (они не будут считаться изученными)
+    # Но тогда они могут повторяться. Лучше всё-таки отмечать как изученные? Ежедневная рассылка должна быть дополнением, а не заменой.
+    # Для простоты: будем увеличивать прогресс при рассылке, чтобы не было дублей. Тогда пользователь не получит их повторно вручную.
+    new_used = used + chosen_indices
+    cat_prog["used"] = new_used
+    cat_prog["last"] = chosen_words
+    set_category_progress(user_id, cat_key, cat_prog)
 
-def get_random_studied_word(user_id: str, cat_key: str = None):
-    if cat_key is None or cat_key == "all":
-        all_words = get_all_studied_words(user_id)
-        if not all_words:
-            return None
-        return random.choice(all_words)
-    else:
-        studied = get_studied_indices(user_id, cat_key)
-        if not studied:
-            return None
-        idx = random.choice(studied)
-        return CATEGORIES[cat_key]["words"][idx]
-
-def get_random_translations_for_quiz(cat_key: str, correct_word_obj, count=3):
-    if cat_key == "all":
-        all_translations = []
-        for key, info in CATEGORIES.items():
-            all_translations.extend([w["translation"] for w in info["words"]])
-        correct_trans = correct_word_obj["translation"]
-        possible = [t for t in all_translations if t != correct_trans]
-        if len(possible) < count:
-            possible = [t for t in all_translations if t != correct_trans] * 3
-        return random.sample(possible, min(count, len(possible)))
-    else:
-        words = CATEGORIES[cat_key]["words"]
-        translations = [w["translation"] for w in words]
-        correct_trans = correct_word_obj["translation"]
-        possible = [t for t in translations if t != correct_trans]
-        if len(possible) < count:
-            possible = [t for t in translations if t != correct_trans] * 3
-        return random.sample(possible, min(count, len(possible)))
+    order = get_user_word_order(user_id)
+    msg = "*Ежедневная порция слов:*\n\n" + "\n".join(f"{i+1}. {format_word_by_order(w, order)}" for i, w in enumerate(chosen_words))
+    await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")  # без кнопок
 
 # ========== ОБРАБОТЧИКИ СООБЩЕНИЙ ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     user_id = str(update.effective_user.id)
     if "current_category" not in context.user_data:
         context.user_data["current_category"] = DEFAULT_CATEGORY
@@ -278,12 +421,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Текущая тема: *{CATEGORIES[context.user_data['current_category']]['name']}*\n\n"
         f"Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
         f"Порядок слов: {'Английский→Русский' if get_user_word_order(user_id) == 'en_ru' else 'Русский→Английский'}\n\n"
+        f"Ежедневная рассылка: {'Включена' if get_daily_settings(user_id).get('enabled') else 'Выключена'}\n\n"
         f"Нажимай кнопки:",
         parse_mode="Markdown",
         reply_markup=get_main_keyboard()
     )
 
 async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     text = update.message.text
     user_id = str(update.effective_user.id)
 
@@ -298,15 +444,20 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_order = get_user_word_order(user_id)
         order_text = "🇬🇧 Английский → Русский" if current_order == "en_ru" else "🇷🇺 Русский → Английский"
         current_count = get_user_words_per_day(user_id)
+        daily = get_daily_settings(user_id)
+        daily_status = "✅ Включена" if daily.get("enabled") else "❌ Выключена"
+        daily_time = daily.get("time") or "не выбрано"
         await update.message.reply_text(
             f"⚙️ *Настройки*\n\n"
             f"• Количество слов в день: *{current_count}*\n"
-            f"• Порядок слов: *{order_text}*\n\n"
+            f"• Порядок слов: *{order_text}*\n"
+            f"• Ежедневная рассылка: *{daily_status}* ({daily_time})\n\n"
             f"Выберите, что хотите изменить:",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔢 Количество слов", callback_data="show_count_settings")],
-                [InlineKeyboardButton("🔄 Порядок слов", callback_data="show_order_settings")]
+                [InlineKeyboardButton("🔄 Порядок слов", callback_data="show_order_settings")],
+                [InlineKeyboardButton("📅 Ежедневная рассылка", callback_data="show_daily_settings")]
             ])
         )
         return
@@ -419,6 +570,8 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== ОБРАБОТЧИКИ ИНЛАЙН-КНОПОК ==========
 async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -427,7 +580,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     cat = CATEGORIES[cat_key]
     words = cat["words"]
 
-    # Обработка настроек количества слов
     if data == "show_count_settings":
         current = get_user_words_per_day(user_id)
         await query.edit_message_text(
@@ -443,6 +595,50 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             "⚙️ *Выбор порядка слов*\n\nВыберите желаемый порядок:",
             parse_mode="Markdown",
             reply_markup=get_order_settings_buttons(current_order)
+        )
+        return
+
+    if data == "show_daily_settings":
+        daily = get_daily_settings(user_id)
+        enabled = daily.get("enabled", False)
+        daily_time = daily.get("time", "")
+        await query.edit_message_text(
+            "⚙️ *Настройка ежедневной рассылки*\n\n"
+            "Вы можете включить или выключить рассылку, а также выбрать время.",
+            parse_mode="Markdown",
+            reply_markup=get_daily_settings_buttons(enabled, daily_time or "не выбрано")
+        )
+        return
+
+    if data == "daily_toggle":
+        daily = get_daily_settings(user_id)
+        enabled = not daily.get("enabled", False)
+        set_daily_settings(user_id, enabled=enabled)
+        daily_time = daily.get("time", "")
+        await query.edit_message_text(
+            "⚙️ *Настройка ежедневной рассылки*\n\n"
+            f"Статус: {'✅ Включена' if enabled else '❌ Выключена'}",
+            parse_mode="Markdown",
+            reply_markup=get_daily_settings_buttons(enabled, daily_time or "не выбрано")
+        )
+        return
+
+    if data == "daily_set_time":
+        await query.edit_message_text(
+            "Выберите час для ежедневной рассылки (в UTC):",
+            reply_markup=get_time_selection_buttons()
+        )
+        return
+
+    if data.startswith("daily_time_"):
+        time_str = data.split("_")[2] + ":" + data.split("_")[3]
+        set_daily_settings(user_id, daily_time=time_str)
+        daily = get_daily_settings(user_id)
+        enabled = daily.get("enabled", False)
+        await query.edit_message_text(
+            f"✅ Время рассылки установлено: {time_str} UTC.\n"
+            f"Не забудьте включить рассылку в настройках, если ещё не сделали.",
+            reply_markup=get_daily_settings_buttons(enabled, time_str)
         )
         return
 
@@ -469,7 +665,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.answer("Неверный порядок.")
         return
 
-    # Основные действия
     if data == "more_words":
         today_indices = context.user_data.get("today_words", [])
         cat_prog = get_category_progress(user_id, cat_key)
@@ -610,7 +805,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_keyboard()
         )
 
-    # Викторина
     elif data == "quiz_all":
         context.user_data["quiz_category"] = "all"
         studied_words = get_all_studied_words(user_id)
@@ -671,7 +865,6 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         else:
             result = f"❌ *Неправильно.*\n\n*Слово:* {last_word['word']}\n*Правильный перевод:* {last_word['translation']}"
 
-        # Следующий вопрос
         if last_cat == "all":
             studied_words = get_all_studied_words(user_id)
             if studied_words:
@@ -719,6 +912,8 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
 
 # ========== КОМАНДА /set_count ==========
 async def set_count_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     user_id = str(update.effective_user.id)
     current = get_user_words_per_day(user_id)
     await update.message.reply_text(
@@ -729,6 +924,8 @@ async def set_count_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return COUNT_INPUT
 
 async def set_count_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     user_id = str(update.effective_user.id)
     try:
         count = int(update.message.text)
@@ -753,11 +950,15 @@ async def set_count_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return COUNT_INPUT
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     await update.message.reply_text("Настройка отменена.", reply_markup=get_main_keyboard())
     return ConversationHandler.END
 
 # ========== ОБРАБОТЧИК ВЫБОРА КАТЕГОРИИ ==========
 async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
     query = update.callback_query
     await query.answer()
     user_id = str(query.from_user.id)
@@ -782,10 +983,20 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ========== ЗАПУСК С ВЕБ-ХУКОМ ==========
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_rate_limit(update):
+        return
+    backup_progress()
+    await update.message.reply_text("✅ Резервная копия прогресса создана.")
+
 async def main():
     app = Application.builder().token(TOKEN).updater(None).build()
 
+    # Регистрация обработчиков команд
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("backup", backup_command))
+
+    # ConversationHandler для /set_count
     count_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("set_count", set_count_start)],
         states={
@@ -795,17 +1006,20 @@ async def main():
     )
     app.add_handler(count_conv_handler)
 
+    # Обработчики сообщений и колбэков
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
-    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
+    app.add_handler(CallbackQueryHandler(inline_buttons_callback, pattern="^(more_words|back_to_menu|reverse_order|pronounce|show_count_settings|show_order_settings|show_daily_settings|daily_toggle|daily_set_time|daily_time_\\d{2}_\\d{2}|count_\\d+|order_|confirm_reset_|cancel_reset|exit_quiz|quiz_all|quiz_cat_|quiz_answer_|noop)"))
     app.add_handler(CallbackQueryHandler(category_callback, pattern="^cat_"))
 
-    # Запускаем фоновый планировщик для сброса прогресса на диск каждые 10 секунд
+    # Планировщик
     scheduler = BackgroundScheduler()
     scheduler.add_job(flush_progress, 'interval', seconds=10)
+    scheduler.add_job(lambda: asyncio.create_task(check_and_send_daily(app)), 'interval', minutes=1)
+    scheduler.add_job(backup_progress, 'interval', hours=24)
     scheduler.start()
-    # Регистрируем вызов flush_progress при завершении
     atexit.register(flush_progress)
 
+    # Вебхук
     webhook_url = f"{URL}/telegram"
     await app.bot.set_webhook(webhook_url, allowed_updates=Update.ALL_TYPES)
     print(f"Webhook set to {webhook_url}")
