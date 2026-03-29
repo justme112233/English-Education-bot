@@ -517,41 +517,40 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         )
 
         elif data == "pronounce":
-        if not GTTS_AVAILABLE:
-            await query.answer("Функция произношения временно недоступна.", show_alert=True)
-            return
-        last_words = context.user_data.get("last_pronounce_words", [])
-        if not last_words:
-            await query.answer("Нет слов для озвучивания. Сначала получите слова на сегодня.", show_alert=True)
-            return
-        remaining = context.user_data.get("pronounce_remaining", [])
-        if not remaining:
-            # Если список пуст, но есть слова в порции – создаём заново
-            remaining = last_words.copy()
-            context.user_data["pronounce_remaining"] = remaining
-        if not remaining:
-            await query.answer("Все слова из этой порции уже озвучены. Нажмите «Ещё слова» для новой порции.", show_alert=True)
-            return
-        word_obj = random.choice(remaining)
-        remaining.remove(word_obj)
+    if not GTTS_AVAILABLE:
+        await query.answer("Функция произношения временно недоступна.", show_alert=True)
+        return
+    last_words = context.user_data.get("last_pronounce_words", [])
+    if not last_words:
+        await query.answer("Нет слов для озвучивания. Сначала получите слова на сегодня.", show_alert=True)
+        return
+    remaining = context.user_data.get("pronounce_remaining", [])
+    if not remaining:
+        remaining = last_words.copy()
         context.user_data["pronounce_remaining"] = remaining
-        text_to_speak = word_obj["word"]
-        try:
-            tts = gTTS(text=text_to_speak, lang='en')
-            audio_bytes = io.BytesIO()
-            tts.write_to_fp(audio_bytes)
-            audio_bytes.seek(0)
-            await query.message.reply_audio(
-                audio=audio_bytes,
-                filename=f"{text_to_speak}.mp3",
-                caption=f"🔊 {text_to_speak}",
-                title=text_to_speak,
-                performer="English Bot"
-            )
-            logger.info(f"Sent audio for {text_to_speak}")
-        except Exception as e:
-            logger.error(f"gTTS error: {e}")
-            await query.answer("Не удалось сгенерировать произношение.", show_alert=True)
+    if not remaining:
+        await query.answer("Все слова из этой порции уже озвучены. Нажмите «Ещё слова» для новой порции.", show_alert=True)
+        return
+    word_obj = random.choice(remaining)
+    remaining.remove(word_obj)
+    context.user_data["pronounce_remaining"] = remaining
+    text_to_speak = word_obj["word"]
+    try:
+        tts = gTTS(text=text_to_speak, lang='en')
+        audio_bytes = io.BytesIO()
+        tts.write_to_fp(audio_bytes)
+        audio_bytes.seek(0)
+        await query.message.reply_audio(
+            audio=audio_bytes,
+            filename=f"{text_to_speak}.mp3",
+            caption=f"🔊 {text_to_speak}",
+            title=text_to_speak,
+            performer="English Bot"
+        )
+        logger.info(f"Sent audio for {text_to_speak}")
+    except Exception as e:
+        logger.error(f"gTTS error: {e}")
+        await query.answer("Не удалось сгенерировать произношение.", show_alert=True)
 
     elif data.startswith("confirm_reset_"):
         cat_to_reset = data.split("_", 2)[2]
