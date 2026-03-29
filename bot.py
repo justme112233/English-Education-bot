@@ -42,7 +42,7 @@ with open(WORDS_FILE, "r", encoding="utf-8") as f:
     data = json.load(f)
 CATEGORIES = data["categories"]
 CATEGORY_KEYS = list(CATEGORIES.keys())
-DEFAULT_CATEGORY = "travel"
+# DEFAULT_CATEGORY удалён – пользователь должен выбрать сам
 
 COUNT_INPUT = 1
 
@@ -236,9 +236,10 @@ def progress_bar(studied, total, length=10):
 # ========== ФУНКЦИЯ ОТПРАВКИ СЛОВ (для рассылки) ==========
 async def send_daily_words_to_user(bot, user_id: str):
     up = get_user_progress(user_id)
-    cat_key = up.get("current_category", DEFAULT_CATEGORY)
-    if cat_key not in CATEGORIES:
-        cat_key = DEFAULT_CATEGORY
+    cat_key = up.get("current_category")
+    if not cat_key or cat_key not in CATEGORIES:
+        # Если категория не выбрана, не отправляем
+        return
     cat = CATEGORIES[cat_key]
     words = cat["words"]
     total = len(words)
@@ -277,7 +278,7 @@ def backup_progress():
         logger.info(f"Progress backed up to {backup_path}")
     except Exception as e:
         logger.error(f"Backup failed: {e}")
-		
+
 # ========== КЛАВИАТУРЫ ==========
 def get_main_keyboard():
     keyboard = [
@@ -359,7 +360,7 @@ def get_count_settings_buttons(current_count):
     if row:
         buttons.append(row)
     buttons.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(buttons)
+    return InlineKeyboardMarkup(keyboard)
 
 def get_daily_settings_buttons(enabled, current_time):
     keyboard = []
@@ -458,19 +459,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_rate_limit(update):
         return
     user_id = str(update.effective_user.id)
-    if "current_category" not in context.user_data:
-        context.user_data["current_category"] = DEFAULT_CATEGORY
     up = get_user_progress(user_id)
-    if "current_category" not in up:
-        up["current_category"] = DEFAULT_CATEGORY
-        set_user_progress(user_id, up)
+    # Восстанавливаем выбранную категорию из прогресса, если есть
+    if "current_category" not in context.user_data and "current_category" in up:
+        context.user_data["current_category"] = up["current_category"]
     if "today_words" not in context.user_data:
         context.user_data["today_words"] = []
     total_studied, total_words = get_total_progress(user_id)
     streak = up.get("streak", 0)
+    current_cat_name = CATEGORIES[context.user_data["current_category"]]['name'] if context.user_data.get("current_category") else "❌ не выбрана"
     await update.message.reply_text(
         f"👋 Привет! Я помогу выучить английские слова по темам.\n\n"
-        f"Текущая тема: *{CATEGORIES[context.user_data['current_category']]['name']}*\n\n"
+        f"Текущая тема: *{current_cat_name}*\n\n"
         f"Количество слов в день: *{get_user_words_per_day(user_id)}*\n\n"
         f"Порядок слов: {'Английский→Русский' if get_user_word_order(user_id) == 'en_ru' else 'Русский→Английский'}\n\n"
         f"Ежедневная рассылка: {'Включена' if get_daily_settings(user_id).get('enabled') else 'Выключена'}\n\n"
@@ -486,6 +486,19 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = update.message.text
     user_id = str(update.effective_user.id)
+
+    # Действия, которые не требуют выбранной категории
+    if text in ["🎯 Выбрать тему", "⚙️ Настройки", "📊 Прогресс"] or text.isdigit():
+        pass
+    else:
+        # Для всех остальных действий проверяем, выбрана ли категория
+        cat_key = context.user_data.get("current_category")
+        if cat_key is None:
+            await update.message.reply_text(
+                "⚠️ Сначала выберите тему с помощью кнопки «🎯 Выбрать тему».",
+                reply_markup=get_main_keyboard()
+            )
+            return
 
     if text == "🎯 Выбрать тему":
         await update.message.reply_text("Выберите тему:", reply_markup=get_category_buttons(user_id))
@@ -522,7 +535,8 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Пожалуйста, введите число от 1 до 10.", reply_markup=get_main_keyboard())
         return
 
-    cat_key = context.user_data.get("current_category", DEFAULT_CATEGORY)
+    # Теперь text не входит в исключения, и категория выбрана
+    cat_key = context.user_data["current_category"]
     cat = CATEGORIES[cat_key]
     words = cat["words"]
     total = len(words)
@@ -653,9 +667,27 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     data = query.data
     user_id = str(query.from_user.id)
-    cat_key = context.user_data.get("current_category", DEFAULT_CATEGORY)
-    cat = CATEGORIES[cat_key]
-    words = cat["words"]
+
+    # Действия, которые требуют выбранной категории
+    if data in ["more_words", "reverse_order", "pronounce"] or data.startswith("confirm_reset_"):
+        cat_key = context.user_data.get("current_category")
+        if cat_key is None:
+            await query.answer("Сначала выберите тему через меню.", show_alert=True)
+            return
+    else:
+        # Для остальных действий категория может не понадобиться (настройки, викторина и т.д.)
+        cat_key = context.user_data.get("current_category")
+        # Для викторины и выбора категории категория не нужна, они сами запросят
+        pass
+
+    # Если категория нужна, но её нет – выше уже ответили. Далее код предполагает, что для действий, где она нужна, она есть.
+    # Для удобства определим cat и words, если категория есть
+    if cat_key:
+        cat = CATEGORIES[cat_key]
+        words = cat["words"]
+    else:
+        # Для действий, не требующих категории, cat_key может быть None
+        pass
 
     # НАСТРОЙКИ
     if data == "show_count_settings":
@@ -705,7 +737,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.answer("Неверный порядок.")
         return
 
-    # ОСНОВНЫЕ ДЕЙСТВИЯ
+    # ОСНОВНЫЕ ДЕЙСТВИЯ (требуют категорию)
     if data == "more_words":
         today_indices = context.user_data.get("today_words", [])
         cat_prog = get_category_progress(user_id, cat_key)
@@ -939,7 +971,6 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная категория.")
         return
     context.user_data["current_category"] = cat_key
-    context.user_data["today_words"] = []
     up = get_user_progress(user_id)
     up["current_category"] = cat_key
     set_user_progress(user_id, up)
