@@ -920,7 +920,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         return
 
     # ВИКТОРИНА
-elif data == "quiz_all":
+	elif data == "quiz_all":
         print(f"DEBUG: quiz_all clicked for user {user_id}")
         context.user_data["quiz_category"] = "all"
         studied_words = get_all_studied_words(user_id)
