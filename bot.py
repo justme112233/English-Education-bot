@@ -665,6 +665,16 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         return
     query = update.callback_query
     await query.answer()
+     # Для настроек количества слов и порядка – пропускаем проверку категории
+    if data in ["show_count_settings", "show_order_settings", "show_daily_settings", "daily_toggle", "daily_set_time"] or data.startswith("daily_time_") or data.startswith("count_") or data.startswith("order_"):
+        # Эти действия не требуют категории
+        pass
+    else:
+        # Для остальных проверяем, выбрана ли категория
+        cat_key = context.user_data.get("current_category")
+        if cat_key is None:
+            await query.answer("Сначала выберите тему через меню.", show_alert=True)
+            return
     data = query.data
     user_id = str(query.from_user.id)
 
@@ -722,10 +732,13 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         enabled = daily.get("enabled", False)
         await query.edit_message_text(f"✅ Время рассылки установлено: {time_str} UTC.\nНе забудьте включить рассылку в настройках, если ещё не сделали.", reply_markup=get_daily_settings_buttons(enabled, time_str))
         return
-    if data.startswith("count_"):
+     if data.startswith("count_"):
         new_count = int(data.split("_")[1])
         set_user_words_per_day(user_id, new_count)
-        await query.edit_message_text(f"✅ Количество слов установлено: {new_count} в день.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]))
+        await query.edit_message_text(
+            f"✅ Количество слов установлено: {new_count} в день.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
+        )
         return
     if data.startswith("order_"):
         new_order = data.split("_")[1]
