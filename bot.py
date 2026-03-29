@@ -309,18 +309,12 @@ def get_after_words_buttons():
 
 def get_quiz_category_buttons(user_id: str):
     buttons = []
-    total_studied = 0
-    for key, info in CATEGORIES.items():
-        studied = len(get_user_progress(user_id).get(key, {"used": []})["used"])
-        total_studied += studied
     if total_studied > 0:
         buttons.append([InlineKeyboardButton("📚 Все категории", callback_data="quiz_all")])
     for key, info in CATEGORIES.items():
         studied = len(get_user_progress(user_id).get(key, {"used": []})["used"])
         if studied > 0:
             buttons.append([InlineKeyboardButton(f"{info['name']} ({studied})", callback_data=f"quiz_cat_{key}")])
-    if not buttons:
-        buttons.append([InlineKeyboardButton("😢 Нет изученных слов", callback_data="noop")])
     return InlineKeyboardMarkup(buttons)
 
 def get_quiz_buttons(correct_translation, wrong_translations):
@@ -673,6 +667,7 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== ОБРАБОТЧИКИ ИНЛАЙН-КНОПОК ==========
 async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"Received callback data: {update.callback_query.data}")   # временно
     if not await check_rate_limit(update):
         return
     query = update.callback_query
@@ -925,14 +920,12 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         return
 
     # ВИКТОРИНА
-    if data == "quiz_all":
+elif data == "quiz_all":
+        print(f"DEBUG: quiz_all clicked for user {user_id}")
         context.user_data["quiz_category"] = "all"
         studied_words = get_all_studied_words(user_id)
         if not studied_words:
-            await query.edit_message_text(
-                "❌ У вас ещё нет изученных слов. Сначала выучите несколько слов через «Слова на сегодня».",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
-            )
+            await query.edit_message_text("❌ Нет изученных слов.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]))
             return
         word_obj = random.choice(studied_words)
         cat_for_options = None
@@ -946,20 +939,17 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(
             f"*Викторина (все категории)*\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=await query.edit_message_text(..., reply_markup=get_quiz_buttons(word_obj["translation"], wrong))
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong)
         )
         return
 
-    if data.startswith("quiz_cat_"):
+    elif data.startswith("quiz_cat_"):
+        print(f"DEBUG: quiz_cat_ clicked: {data}")
         cat_for_quiz = data.split("_", 2)[2]
         context.user_data["quiz_category"] = cat_for_quiz
         word_obj = get_random_studied_word(user_id, cat_for_quiz)
         if not word_obj:
-            await query.edit_message_text(
-                f"❌ В категории *{CATEGORIES[cat_for_quiz]['name']}* нет изученных слов. Сначала выучите несколько слов.",
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]])
-            )
+            await query.edit_message_text(f"❌ В категории *{CATEGORIES[cat_for_quiz]['name']}* нет изученных слов.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]))
             return
         context.user_data["last_quiz_word"] = word_obj
         context.user_data["last_quiz_cat"] = cat_for_quiz
@@ -967,7 +957,7 @@ async def inline_buttons_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(
             f"*Викторина* ({CATEGORIES[cat_for_quiz]['name']})\n\nСлово: **{word_obj['word']}**\n\nВыберите правильный перевод:",
             parse_mode="Markdown",
-            reply_markup=get_quiz_buttons(word_obj["translation"], wrong, id(word_obj))
+            reply_markup=get_quiz_buttons(word_obj["translation"], wrong)
         )
         return
 
